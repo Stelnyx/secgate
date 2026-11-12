@@ -112,7 +112,7 @@ test("workspace-looking target fails fast with clear message", () => {
   }
 });
 
-test("empty directory exits cleanly with no-match message", () => {
+test("empty directory with no scanners exits 2, not PASS", () => {
   const empty = fs.mkdtempSync(path.join(os.tmpdir(), "secgate-empty-"));
   try {
     const res = spawnSync(process.execPath, [bin, empty], {
@@ -121,12 +121,145 @@ test("empty directory exits cleanly with no-match message", () => {
       env: { ...process.env, PATH: "" },
       maxBuffer: 64 * 1024 * 1024
     });
-    assertEq(res.status ?? 1, 0, "exit");
+    assertEq(res.status ?? 1, 2, "exit");
     assertContains(res.stdout || "", "no scannable source", "no-match message");
-    assertContains(res.stdout || "", "STATUS: PASS", "status");
+    assertNotContains(res.stdout || "", "STATUS: PASS", "status");
+    assertContains(res.stderr || "", "no scanners available", "stderr");
   } finally {
     fs.rmSync(empty, { recursive: true, force: true });
   }
+});
+
+/* ── Coverage: a gate that could not look must not go green (#73) ── */
+
+// Build a PATH directory that holds `node` plus the given POSIX shell stubs,
+// so the scan sees exactly those tools and nothing else.
+function makeBinDir(stubs = {}) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "secgate-bin-"));
+  fs.symlinkSync(process.execPath, path.join(dir, "node"));
+  for (const [name, script] of Object.entries(stubs)) {
+    const p = path.join(dir, name);
+    fs.writeFileSync(p, `#!/bin/sh\n${script}\n`);
+    fs.chmodSync(p, 0o755);
+  }
+  return dir;
+}
+
+function makeEvalTarget() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "secgate-cov-"));
+  fs.writeFileSync(path.join(dir, "index.js"), "eval(userInput);\n");
+  return dir;
+}
+
+function runIsolated(binDir, targetDir, extraArgs = []) {
+  const res = spawnSync(process.execPath, [bin, targetDir, ...extraArgs], {
+    encoding: "utf-8",
+    cwd: targetDir,
+    env: { ...process.env, PATH: binDir },
+    maxBuffer: 64 * 1024 * 1024
+  });
+  const reportPath = path.join(targetDir, "secgate-v7-report.json");
+  const rep = fs.existsSync(reportPath) ? JSON.parse(fs.readFileSync(reportPath, "utf-8")) : null;
+  return { code: res.status ?? 1, stdout: res.stdout || "", stderr: res.stderr || "", rep };
+}
+
+const SCORED = ["semgrep", "gitleaks", "npm", "osv", "trivy"];
+
+test("PATH with node only → exit 2, '0 of 5 scanners ran', coverage.ran empty", () => {
+  const binDir = makeBinDir();
+  const target = makeEvalTarget();
+  try {
+    const r = runIsolated(binDir, target);
+    assertEq(r.code, 2, "exit");
+    assertContains(r.stderr, "0 of 5 scanners ran", "coverage warning");
+    assertContains(r.stderr, "no scanners available", "no-scanner message");
+    if (!r.rep) throw new Error("report not written");
+    assertEq(r.rep.coverage.ran.length, 0, "coverage.ran.length");
+    assertEq(r.rep.coverage.total, 5, "coverage.total");
+    assertEq(r.rep.coverage.skipped.length, 5, "coverage.skipped.length");
+    assertEq(r.rep.status === "PASS", false, "report.status is not PASS");
+    assertEq(r.rep.securityScore, null, "securityScore null when nothing ran");
+    for (const k of SCORED) assertEq(r.rep.toolScores[k], null, `toolScores.${k}`);
+    assertNotContains(r.stdout, "100 / 100", "no tool printed as 100 / 100");
+    assertNotContains(r.stdout, "STATUS: PASS", "console status");
+    assertNotContains(r.stdout, "CONFIDENCE: 100%", "confidence");
+    const html = fs.readFileSync(path.join(target, `${path.basename(target)}.html`), "utf-8");
+    assertContains(html, "0 of 5 scanners ran", "HTML coverage line");
+  } finally {
+    fs.rmSync(binDir, { recursive: true, force: true });
+    fs.rmSync(target, { recursive: true, force: true });
+  }
+});
+
+test("exactly one scanner available → skipped tools score null, not 100 / 100", () => {
+  const binDir = makeBinDir({ gitleaks: "echo '[]'" });
+  const target = makeEvalTarget();
+  try {
+    const r = runIsolated(binDir, target);
+    assertEq(r.code, 0, "exit (partial coverage, no findings)");
+    assertContains(r.stderr, "1 of 5 scanners ran", "coverage warning");
+    assertContains(r.stderr, "semgrep", "install hint names semgrep");
+    if (!r.rep) throw new Error("report not written");
+    assertEq(JSON.stringify(r.rep.coverage.ran), JSON.stringify(["gitleaks"]), "coverage.ran");
+    assertEq(r.rep.toolScores.gitleaks, 100, "gitleaks ran clean");
+    for (const k of ["semgrep", "npm", "osv", "trivy"]) {
+      assertEq(r.rep.toolScores[k], null, `toolScores.${k}`);
+    }
+    const lines = r.stdout.split("\n");
+    for (const label of ["Semgrep", "npm audit", "osv-scanner", "Trivy"]) {
+      const line = lines.find(l => l.trimStart().startsWith(label) && /\/ 100|n\/a/.test(l));
+      if (!line) throw new Error(`no score line for ${label}`);
+      assertNotContains(line, "100 / 100", `${label} score line`);
+      assertContains(line, "n/a", `${label} score line`);
+    }
+    if (r.rep.remediation.confidence > 20) {
+      throw new Error(`confidence ${r.rep.remediation.confidence}% exceeds 1 of 5 coverage`);
+    }
+  } finally {
+    fs.rmSync(binDir, { recursive: true, force: true });
+    fs.rmSync(target, { recursive: true, force: true });
+  }
+});
+
+test("--require semgrep without semgrep on PATH → exit 2", () => {
+  const binDir = makeBinDir({ gitleaks: "echo '[]'" });
+  const target = makeEvalTarget();
+  try {
+    const r = runIsolated(binDir, target, ["--require", "semgrep"]);
+    assertEq(r.code, 2, "exit");
+    assertContains(r.stderr, "required scanner", "stderr");
+    assertContains(r.stderr, "semgrep", "stderr names the tool");
+  } finally {
+    fs.rmSync(binDir, { recursive: true, force: true });
+    fs.rmSync(target, { recursive: true, force: true });
+  }
+});
+
+test("requireScanners config key without the tool on PATH → exit 2", () => {
+  const binDir = makeBinDir({ gitleaks: "echo '[]'" });
+  const target = makeEvalTarget();
+  fs.writeFileSync(path.join(target, ".secgate.config.json"), JSON.stringify({ requireScanners: ["osv-scanner"] }));
+  try {
+    const r = runIsolated(binDir, target);
+    assertEq(r.code, 2, "exit");
+    assertContains(r.stderr, "osv", "stderr names the tool");
+  } finally {
+    fs.rmSync(binDir, { recursive: true, force: true });
+    fs.rmSync(target, { recursive: true, force: true });
+  }
+});
+
+test("--require with an unknown scanner name → exit 2 before scanning", () => {
+  const r = run([path.join(repoRoot, "test/fixtures/clean"), "--require", "nosuchtool"]);
+  assertEq(r.code, 2, "exit");
+  assertContains(r.stderr, "nosuchtool", "stderr");
+  assertNotContains(r.stdout, "Starting Semgrep", "no scan started");
+});
+
+test("--help documents exit code 2 for missing scanners and --require", () => {
+  const r = run(["--help"]);
+  assertContains(r.stdout, "--require", "help flag");
+  assertContains(r.stdout, "no scanners available", "help exit 2");
 });
 
 test("unwritable output directory exits 2 without stack trace", () => {

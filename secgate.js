@@ -18,8 +18,13 @@ import { loadBaseline, writeBaseline, applyBaseline } from "./lib/baseline.mjs";
 import { analyze, remediate } from "./lib/intelligence.mjs";
 import {
   TOOLS,
+  SCANNERS,
+  SCANNER_LABEL,
+  INSTALL_HINTS,
   summarize,
   resolveStatus,
+  computeCoverage,
+  normalizeScannerNames,
   applyPathStripping,
   renderHtml,
   buildSarif
@@ -91,6 +96,9 @@ Options:
                       containing multiple sub-projects.
   --baseline          Compare against baseline; fail only on net-new findings
   --update-baseline   Write current findings to baseline file then exit 0
+  --require <tools>   Comma-separated scanners that must run (semgrep,
+                      gitleaks,npm,osv,trivy). Exit 2 if any did not run.
+                      Overrides requireScanners in the config file.
   --debug             Print raw scanner output
   --profile <name>    Confidence profile: 'curated' (default; demotes
                       noisy rules + base-image OS CVEs + stale CVEs to
@@ -110,13 +118,20 @@ Config file (.secgate.config.json in target):
   ignore             Array of signatures to drop entirely
   baselineFile       Path to baseline JSON (default: .secgate-baseline.json)
   customSemgrepRules Path to additional semgrep rules (passed as --config=<path>)
+  requireScanners    Array of scanners that must run (exit 2 if one did not)
 
 Precedence: CLI flag > config file > defaults
+
+Scanners: npm audit needs only Node.js. Semgrep, Gitleaks, osv-scanner and
+Trivy must be installed separately and on PATH; a scanner that is missing is
+reported as "n/a", never as a clean 100 / 100.
 
 Exit codes:
   0  PASS — no findings matching failOn severities (or all matched baseline)
   1  FAIL — net-new findings matching failOn severities
-  2  Invalid target or CLI error
+  2  Invalid target or CLI error; no scanners available (none of the five
+     scanners ran); or a scanner listed in --require / requireScanners
+     did not run
 
 Output:
   secgate-v7-report.json    machine-readable report
@@ -146,6 +161,23 @@ const BASELINE_MODE    = argv.includes("--baseline");
 const UPDATE_BASELINE  = argv.includes("--update-baseline");
 const PROFILE_FLAG     = argValue("--profile");
 const ALLOW_WORKSPACE  = argv.includes("--allow-workspace");
+const REQUIRE_IDX      = argv.indexOf("--require");
+const REQUIRE_FLAG     = REQUIRE_IDX >= 0 ? argValue("--require") : null;
+
+if (REQUIRE_IDX >= 0 && REQUIRE_FLAG === null) {
+  console.error(`--require needs a comma-separated list of scanners: ${SCANNERS.join(",")}`);
+  process.exit(2);
+}
+
+let cliRequired = null;
+if (REQUIRE_FLAG !== null) {
+  const { valid, unknown } = normalizeScannerNames(REQUIRE_FLAG.split(","));
+  if (unknown.length) {
+    console.error(`Unknown scanner in --require: ${unknown.join(", ")}. Valid: ${SCANNERS.join(", ")}`);
+    process.exit(2);
+  }
+  cliRequired = valid;
+}
 
 let scanLimits;
 try {
@@ -218,6 +250,15 @@ if (PROFILE_FLAG) {
     console.error(`Invalid --profile '${PROFILE_FLAG}'. Use 'curated' or 'strict'.`);
     process.exit(2);
   }
+}
+
+let requiredScanners = cliRequired;
+if (requiredScanners === null) {
+  const { valid, unknown } = normalizeScannerNames(config.requireScanners || []);
+  if (unknown.length) {
+    console.warn(`[secgate] requireScanners: unknown scanner(s) ${unknown.join(", ")} ignored. Valid: ${SCANNERS.join(", ")}`);
+  }
+  requiredScanners = valid;
 }
 
 const findings    = [];
@@ -437,8 +478,24 @@ report.remediation   = remediate(activeFindings, {
   auditLog
 });
 report.status        = resolveStatus(activeFindings, config.failOn, BASELINE_MODE);
-report.securityScore = computeScore(activeFindings);
-report.toolScores    = computeToolScores(activeFindings, ["semgrep", "gitleaks", "npm", "osv", "trivy"]);
+report.coverage      = computeCoverage(toolStatus);
+
+const coverage        = report.coverage;
+const noScannersRan   = coverage.ran.length === 0;
+const missingRequired = requiredScanners.filter(t => !coverage.ran.includes(t));
+const coverageExit2   = noScannersRan || missingRequired.length > 0;
+
+// A scan that could not look is not a pass: exit 2 and say so in the report.
+if (coverageExit2) report.status = "INCOMPLETE";
+
+// Nothing ran → no score to give. Partial coverage keeps a score over the
+// scanners that did run; skipped scanners are never scored (null, not 100).
+report.securityScore = noScannersRan ? null : computeScore(activeFindings);
+report.toolScores    = computeToolScores(activeFindings, SCANNERS, coverage.skipped);
+
+// Confidence cannot exceed the share of scanners that actually ran.
+const coveragePct = Math.round((100 * coverage.ran.length) / coverage.total);
+report.remediation.confidence = Math.min(report.remediation.confidence, coveragePct);
 
 /* ────────────────────────────────────────────────────────────────────────────
    OUTPUT
@@ -459,17 +516,27 @@ function scoreColor(n, s) {
 
 const sc = report.securityScore;
 console.log("\n────────────────────────────────");
-console.log(`Security Score: ${scoreColor(sc, `${sc} / 100`)}   ${scoreColor(sc, scoreBar(sc))}  rule ${SCORE_VERSION}`);
+if (sc == null) {
+  console.log(`Security Score: n/a (no scanners ran)  rule ${SCORE_VERSION}`);
+} else {
+  console.log(`Security Score: ${scoreColor(sc, `${sc} / 100`)}   ${scoreColor(sc, scoreBar(sc))}  rule ${SCORE_VERSION}`);
+}
 console.log("");
 
-const TOOL_LABEL = { semgrep: "Semgrep", gitleaks: "Gitleaks", npm: "npm audit", osv: "osv-scanner", trivy: "Trivy" };
-for (const [key, label] of Object.entries(TOOL_LABEL)) {
+for (const key of SCANNERS) {
+  const label = SCANNER_LABEL[key];
   const ts = report.toolScores[key];
-  console.log(`  ${label.padEnd(12)} ${scoreColor(ts, `${ts} / 100`)}   ${scoreColor(ts, scoreBar(ts))}`);
+  if (ts == null) {
+    const reason = toolSkipReason[key] || toolStatus[key];
+    console.log(`  ${label.padEnd(12)} n/a       not run (${reason})`);
+  } else {
+    console.log(`  ${label.padEnd(12)} ${scoreColor(ts, `${ts} / 100`)}   ${scoreColor(ts, scoreBar(ts))}`);
+  }
 }
 
+const coverageLine = `${coverage.ran.length} of ${coverage.total} scanners ran`;
 console.log("\n────────────────────────────────");
-console.log("STATUS:", report.status);
+console.log(coverage.skipped.length ? `STATUS: ${report.status} (${coverageLine})` : `STATUS: ${report.status}`);
 console.log("RISK SCORE:", report.intelligence.riskScore);
 console.log("CONFIDENCE:", report.remediation.confidence + "%");
 
@@ -522,6 +589,30 @@ if (EMIT_SARIF) {
   const sarif = buildSarif(report, repoName, target);
   writeReportFile(sarifFile, JSON.stringify(sarif, null, 2));
   console.log("SARIF report:", sarifFile);
+}
+
+/* ── Coverage warning + exit code ── */
+
+if (coverage.skipped.length) {
+  console.error(`\nWARNING: ${coverageLine}. Results cover only the scanners that ran.`);
+  for (const key of coverage.skipped) {
+    const reason = toolSkipReason[key] || toolStatus[key];
+    const hint = reason === "not installed" ? ` — install: ${INSTALL_HINTS[key]}` : "";
+    console.error(`  - ${SCANNER_LABEL[key]}: ${reason}${hint}`);
+  }
+}
+
+if (noScannersRan) {
+  console.error("\nSecGate: no scanners available — nothing was scanned (exit 2).");
+  process.exit(2);
+}
+
+if (missingRequired.length) {
+  const list = missingRequired
+    .map(t => `${t} (${toolSkipReason[t] || toolStatus[t]})`)
+    .join(", ");
+  console.error(`\nSecGate: required scanner(s) did not run: ${list} (exit 2).`);
+  process.exit(2);
 }
 
 process.exit(report.status === "PASS" ? 0 : 1);
