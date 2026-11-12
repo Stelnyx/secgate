@@ -14,6 +14,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + [Semantic Ver
   for a `release` event created with `GITHUB_TOKEN`, which never triggers
   other workflows, so it never ran. The release build now also runs the
   dependency guard and lint.
+- **Release hardening**: only the `publish-npm` job gets `id-token: write`
+  for npm, and it runs in the `npm` GitHub environment. The workflow runs only
+  from a `vX.Y.Z` tag that points at the checked-out commit, checks the
+  tarball sha256 before `npm publish`, refuses to overwrite an existing GitHub
+  Release or republish a version, and verifies the published package in a
+  separate job with no token and no lifecycle scripts.
 
 ### Changed
 - **Docs**: removed the npm provenance badge and the provenance claims that

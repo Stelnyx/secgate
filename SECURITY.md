@@ -103,10 +103,17 @@ See [`docs/threat-model.md`](docs/threat-model.md) for the full STRIDE model, tr
 
 ## Supply-chain trust
 
-The GitHub Releases `v0.2.9` to `v0.2.13` ship with these verifiable assets.
-Older tags do not. `0.2.14` was published to npm without a tag or a GitHub
-Release, so it has none of them. From the next release, every `vX.Y.Z` tag
-produces them through `.github/workflows/release.yml`.
+State as checked on 2026-11-12 with `gh release list`, `gh release view` and
+`git ls-remote --tags`:
+
+- The GitHub Releases `v0.2.9` to `v0.2.13` carry the assets below.
+- `v0.2.4` has a GitHub Release with no assets. The other tags before `v0.2.9`
+  have no GitHub Release.
+- `0.2.14` is on npm, but the repository has no `v0.2.14` tag and no GitHub
+  Release, so it has none of these assets.
+
+From the next release, every `vX.Y.Z` tag produces them through
+`.github/workflows/release.yml`.
 
 | Artifact | Filename pattern | Purpose |
 |---|---|---|
@@ -116,9 +123,10 @@ produces them through `.github/workflows/release.yml`.
 | SLSA L3 attestation | `secgate-vX.Y.Z.intoto.jsonl` | Non-falsifiable build provenance (SLSA v1.0, Level 3) |
 | Checksums | `SHA256SUMS` | SHA-256 manifest for tarball + SBOM |
 
-npm versions `0.2.9` and `0.2.11` to `0.2.13` carry
-[npm provenance](https://docs.npmjs.com/generating-provenance-statements);
-`0.2.14` does not. From the next release, the `Release` workflow publishes the
+On the same date, `npm view` reported
+[npm provenance](https://docs.npmjs.com/generating-provenance-statements) for
+npm versions `0.2.9` and `0.2.11` to `0.2.13`, and none for `0.2.14`
+(`0.2.10` is not on npm). From the next release, the `Release` workflow publishes the
 signed tarball to npm with provenance through npm Trusted Publishing. Check a
 version with
 `npm view @stelnyx/secgate@<version> dist.attestations.provenance.predicateType`
@@ -135,7 +143,10 @@ the exact workflow that produced it:
   `^https://github\.com/Stelnyx/SecGate/\.github/workflows/release\.yml@refs/tags/.*`
 
 The npm publish and the release-artifact signatures come from the same
-workflow, `.github/workflows/release.yml`.
+workflow, `.github/workflows/release.yml`. When the npm Trusted Publisher
+record names the `npm` GitHub environment, npm accepts publish tokens only from
+the `publish-npm` job, which runs in that environment and executes no project
+code.
 
 The Sigstore transparency log (Rekor) entry is the public record. There is no
 "public key" to rotate; if the signer identity or issuer ever changes, that is

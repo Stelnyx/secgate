@@ -47,7 +47,7 @@ Trusted Publisher settings on npmjs.com for `@stelnyx/secgate`:
 - Organization/user: `Stelnyx`
 - Repository: `secgate` (must match the current GitHub repository name)
 - Workflow filename: `release.yml`
-- Environment: leave blank
+- Environment: `npm` (the GitHub environment of the `publish-npm` job)
 
 The repository must remain public for npm to show provenance. The package's
 `repository` field must keep matching the GitHub repository URL.
@@ -69,8 +69,16 @@ Release flow:
    must print `https://slsa.dev/provenance/v1`. Then run `npm audit signatures`
    in a project that installs it.
 
-To re-run a release for a tag that is already on npm, use the workflow's manual
-run with `skip_npm: true`.
+The workflow refuses to run from a branch, for a tag that is not `vX.Y.Z`, for
+a version already on npm, or when a GitHub Release for the tag already exists.
+If a later job fails, use "Re-run failed jobs" on the same run so the release
+reuses the artifacts that were already built and signed.
+
+A manual run (`workflow_dispatch`) must be started from the tag itself ("Use
+workflow from" set to the tag, and the `tag` input equal to it). Use
+`skip_npm: true` only to add release assets for a version that is already on
+npm; the run fails unless the rebuilt tarball is byte-identical to the one on
+npm.
 
 ## Commit message format
 

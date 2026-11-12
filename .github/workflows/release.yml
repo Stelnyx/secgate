@@ -1,5 +1,7 @@
 name: Release
 
+# Runs only for a vX.Y.Z tag: either a tag push, or a manual run started from
+# that tag ("Use workflow from" must be the tag, not a branch).
 on:
   push:
     tags:
@@ -7,24 +9,28 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag to build (e.g. v0.2.5) — must already exist in the repo"
+        description: "Tag to release (e.g. v0.2.15). Must equal the tag selected in 'Use workflow from'."
         required: true
         type: string
       skip_npm:
-        description: "Skip npm publish (for re-runs of an already-published version)"
+        description: "Skip npm publish. Only for a version already on npm whose tarball this build reproduces byte for byte."
         required: false
         default: false
         type: boolean
 
 permissions: {}
 
+env:
+  RELEASE_TAG: ${{ github.ref_name }}
+
 jobs:
   build:
     name: Build + SBOM + tarball
+    if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
+    # No id-token here: this job runs npm ci and the tests on the tagged code.
     permissions:
       contents: read
-      id-token: write
     outputs:
       tarball_name: ${{ steps.pack.outputs.tarball_name }}
       tarball_sha256: ${{ steps.hash.outputs.tarball_sha256 }}
@@ -33,10 +39,42 @@ jobs:
       provenance_subjects: ${{ steps.hash.outputs.provenance_subjects }}
 
     steps:
+      - name: Validate release tag
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ "$REF_TYPE" != "tag" ]; then
+            echo "Release must run from a tag, not a branch (ref type: $REF_TYPE)"
+            exit 1
+          fi
+          if ! [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Tag '$RELEASE_TAG' is not of the form vX.Y.Z"
+            exit 1
+          fi
+          if [ -n "$INPUT_TAG" ] && [ "$INPUT_TAG" != "$RELEASE_TAG" ]; then
+            echo "Input tag '$INPUT_TAG' differs from the selected ref '$RELEASE_TAG'"
+            exit 1
+          fi
+
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.tag || github.ref }}
+          ref: ${{ github.ref }}
+          persist-credentials: false
+
+      - name: Verify the tag points at the checked-out commit
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin "+refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
+          TAG_COMMIT="$(git rev-parse --verify "refs/tags/${RELEASE_TAG}^{commit}")"
+          HEAD_COMMIT="$(git rev-parse HEAD)"
+          if [ "$TAG_COMMIT" != "$HEAD_COMMIT" ]; then
+            echo "Tag $RELEASE_TAG points at $TAG_COMMIT but the checkout is $HEAD_COMMIT"
+            exit 1
+          fi
+          echo "Tag $RELEASE_TAG -> $TAG_COMMIT"
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -45,15 +83,51 @@ jobs:
           registry-url: "https://registry.npmjs.org"
 
       - name: Verify tag matches package.json version
-        env:
-          EFFECTIVE_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
+          set -euo pipefail
           PKG_VERSION="$(node -p "require('./package.json').version")"
-          TAG_VERSION="${EFFECTIVE_TAG#v}"
+          TAG_VERSION="${RELEASE_TAG#v}"
           if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
             echo "Tag $TAG_VERSION does not match package.json version $PKG_VERSION"
             exit 1
           fi
+
+      # Never overwrite an existing GitHub Release: its assets must stay the
+      # ones that were signed and published. "Re-run failed jobs" does not
+      # re-run this job, so retrying a failed later job still works.
+      - name: Refuse to overwrite an existing GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if OUT="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" 2>&1)"; then
+            echo "A GitHub Release for $RELEASE_TAG already exists. Delete it first if a rebuild is intended."
+            exit 1
+          elif printf '%s' "$OUT" | grep -q 'HTTP 404'; then
+            echo "No GitHub Release for $RELEASE_TAG yet."
+          else
+            echo "Could not check for an existing release: $OUT"
+            exit 1
+          fi
+
+      - name: Check npm state for this version
+        id: npmstate
+        env:
+          SKIP_NPM: ${{ inputs.skip_npm && 'true' || 'false' }}
+        run: |
+          set -euo pipefail
+          VERSION="${RELEASE_TAG#v}"
+          VERSIONS="$(npm view @stelnyx/secgate versions --json)"
+          PUBLISHED="$(VERSIONS="$VERSIONS" VERSION="$VERSION" node -e 'const v=[].concat(JSON.parse(process.env.VERSIONS)); console.log(v.includes(process.env.VERSION) ? "true" : "false")')"
+          if [ "$SKIP_NPM" = "true" ] && [ "$PUBLISHED" != "true" ]; then
+            echo "skip_npm is set but @stelnyx/secgate@$VERSION is not on npm"
+            exit 1
+          fi
+          if [ "$SKIP_NPM" != "true" ] && [ "$PUBLISHED" = "true" ]; then
+            echo "@stelnyx/secgate@$VERSION is already on npm; bump the version or use skip_npm"
+            exit 1
+          fi
+          echo "skip_npm=$SKIP_NPM" >> "$GITHUB_OUTPUT"
 
       - name: Install external scanners
         uses: ./.github/actions/install-scanners
@@ -72,10 +146,9 @@ jobs:
 
       - name: Generate CycloneDX SBOM
         id: sbom
-        env:
-          EFFECTIVE_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
-          SBOM_NAME="secgate-${EFFECTIVE_TAG#v}.sbom.cdx.json"
+          set -euo pipefail
+          SBOM_NAME="secgate-${RELEASE_TAG#v}.sbom.cdx.json"
           npm sbom --sbom-format cyclonedx --sbom-set-name "@stelnyx/secgate" > "$SBOM_NAME"
           if [ ! -s "$SBOM_NAME" ]; then
             echo "SBOM generation failed or produced empty file"
@@ -85,19 +158,36 @@ jobs:
 
       - name: Pack release tarball
         id: pack
-        env:
-          EFFECTIVE_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
+          set -euo pipefail
           TARBALL="$(npm pack | tail -n1)"
-          RELEASE_NAME="secgate-${EFFECTIVE_TAG#v}.tgz"
+          RELEASE_NAME="secgate-${RELEASE_TAG#v}.tgz"
           mv "$TARBALL" "$RELEASE_NAME"
           echo "tarball_name=$RELEASE_NAME" >> "$GITHUB_OUTPUT"
 
+      # With skip_npm the GitHub Release must carry the exact tarball that is
+      # already on npm; a rebuild that differs by one byte stops here.
+      - name: Match the npm tarball (skip_npm only)
+        if: steps.npmstate.outputs.skip_npm == 'true'
+        env:
+          TARBALL: ${{ steps.pack.outputs.tarball_name }}
+        run: |
+          set -euo pipefail
+          EXPECTED="$(npm view "@stelnyx/secgate@${RELEASE_TAG#v}" dist.integrity)"
+          ACTUAL="sha512-$(openssl dgst -sha512 -binary "$TARBALL" | base64 -w0)"
+          if [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "Rebuilt tarball differs from npm (npm: $EXPECTED, build: $ACTUAL)"
+            exit 1
+          fi
+          echo "Rebuilt tarball matches npm: $ACTUAL"
+
       - name: Hash release artifacts
         id: hash
+        env:
+          TARBALL: ${{ steps.pack.outputs.tarball_name }}
+          SBOM: ${{ steps.sbom.outputs.sbom_name }}
         run: |
-          TARBALL="${{ steps.pack.outputs.tarball_name }}"
-          SBOM="${{ steps.sbom.outputs.sbom_name }}"
+          set -euo pipefail
           TAR_SHA=$(sha256sum "$TARBALL" | awk '{print $1}')
           SBOM_SHA=$(sha256sum "$SBOM" | awk '{print $1}')
           echo "tarball_sha256=$TAR_SHA" >> "$GITHUB_OUTPUT"
@@ -119,6 +209,8 @@ jobs:
   provenance:
     name: SLSA L3 provenance
     needs: [build]
+    # The reusable generator declares these permissions for its own jobs;
+    # the caller must grant them or the run is rejected at start.
     permissions:
       id-token: write
       contents: write
@@ -126,21 +218,25 @@ jobs:
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.0.0
     with:
       base64-subjects: ${{ needs.build.outputs.provenance_subjects }}
-      provenance-name: secgate-${{ inputs.tag || github.ref_name }}.intoto.jsonl
+      provenance-name: secgate-${{ github.ref_name }}.intoto.jsonl
       upload-assets: false
 
   sign-and-release:
     name: cosign + GitHub Release
     needs: [build, provenance]
     runs-on: ubuntu-latest
+    # id-token is for keyless cosign. This job runs no project code.
     permissions:
       contents: write
       id-token: write
+    env:
+      TARBALL: ${{ needs.build.outputs.tarball_name }}
+      SBOM: ${{ needs.build.outputs.sbom_name }}
+      ATTESTATION: ${{ needs.provenance.outputs.provenance-name }}
+      TARBALL_SHA256: ${{ needs.build.outputs.tarball_sha256 }}
+      SBOM_SHA256: ${{ needs.build.outputs.sbom_sha256 }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
       - name: Download release artifacts
         uses: actions/download-artifact@v8
         with:
@@ -153,19 +249,17 @@ jobs:
           name: ${{ needs.provenance.outputs.provenance-name }}
           path: ./dist
 
-      - name: Gate - require SBOM + attestation present
+      - name: Gate - require SBOM + attestation present and unchanged
+        working-directory: ./dist
         run: |
-          set -e
-          cd dist
-          TARBALL="${{ needs.build.outputs.tarball_name }}"
-          SBOM="${{ needs.build.outputs.sbom_name }}"
-          ATTESTATION="${{ needs.provenance.outputs.provenance-name }}"
+          set -euo pipefail
           for f in "$TARBALL" "$SBOM" "$ATTESTATION"; do
             if [ ! -s "$f" ]; then
               echo "RELEASE GATE FAILED: missing or empty artifact: $f"
               exit 1
             fi
           done
+          printf '%s  %s\n%s  %s\n' "$TARBALL_SHA256" "$TARBALL" "$SBOM_SHA256" "$SBOM" | sha256sum -c -
           echo "Release gate passed - tarball, SBOM, and SLSA attestation present."
 
       - name: Install cosign
@@ -179,8 +273,7 @@ jobs:
           COSIGN_EXPERIMENTAL: "1"
           COSIGN_YES: "true"
         run: |
-          TARBALL="${{ needs.build.outputs.tarball_name }}"
-          SBOM="${{ needs.build.outputs.sbom_name }}"
+          set -euo pipefail
           cosign sign-blob --yes \
             --bundle "${TARBALL}.cosign.bundle" \
             --output-signature "${TARBALL}.sig" \
@@ -194,18 +287,12 @@ jobs:
 
       - name: Write SHA256SUMS
         working-directory: ./dist
-        run: |
-          sha256sum \
-            "${{ needs.build.outputs.tarball_name }}" \
-            "${{ needs.build.outputs.sbom_name }}" \
-            > SHA256SUMS
+        run: sha256sum "$TARBALL" "$SBOM" > SHA256SUMS
 
       - name: Final gate - signatures present
         working-directory: ./dist
         run: |
-          set -e
-          TARBALL="${{ needs.build.outputs.tarball_name }}"
-          SBOM="${{ needs.build.outputs.sbom_name }}"
+          set -euo pipefail
           for f in "${TARBALL}.sig" "${TARBALL}.pem" "${TARBALL}.cosign.bundle" \
                    "${SBOM}.sig" "${SBOM}.pem" "${SBOM}.cosign.bundle"; do
             if [ ! -s "$f" ]; then
@@ -218,8 +305,8 @@ jobs:
       - name: Create GitHub Release and upload assets
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ inputs.tag || github.ref_name }}
-          name: ${{ inputs.tag || github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: |
@@ -237,50 +324,93 @@ jobs:
   publish-npm:
     name: npm publish (provenance)
     needs: [build, sign-and-release]
-    if: ${{ !inputs.skip_npm }}
+    if: github.ref_type == 'tag' && !inputs.skip_npm
     runs-on: ubuntu-latest
+    # Name this environment in the npm Trusted Publisher record so that only
+    # this job can obtain a publish token.
+    environment: npm
     permissions:
       contents: read
       id-token: write
+    env:
+      TARBALL: ${{ needs.build.outputs.tarball_name }}
+      TARBALL_SHA256: ${{ needs.build.outputs.tarball_sha256 }}
 
     steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-artifacts
+          path: ./dist
+
+      - name: Verify tarball against the build job hash
+        working-directory: ./dist
+        run: |
+          set -euo pipefail
+          if ! [[ "$TARBALL" =~ ^secgate-[0-9]+\.[0-9]+\.[0-9]+\.tgz$ ]]; then
+            echo "Unexpected tarball name: '$TARBALL'"
+            exit 1
+          fi
+          if ! [[ "$TARBALL_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "Missing or malformed tarball sha256 from the build job"
+            exit 1
+          fi
+          printf '%s  %s\n' "$TARBALL_SHA256" "$TARBALL" | sha256sum -c -
+
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
 
       # npm trusted publishing (OIDC) needs npm >= 11.5.1; Node 22 ships npm 10.
       - name: Install npm with trusted publishing support
-        run: npm install -g npm@11.21.2
-
-      - name: Download release artifacts
-        uses: actions/download-artifact@v8
-        with:
-          name: release-artifacts
-          path: ./dist
+        run: npm install -g --ignore-scripts npm@11.21.2
 
       # Publish the same tarball that was hashed, signed and attached to the
       # GitHub Release, so the npm artifact and the release artifact match.
       - name: Publish to npm with provenance
         working-directory: ./dist
-        run: npm publish "./${{ needs.build.outputs.tarball_name }}" --provenance --access public
+        run: npm publish "./${TARBALL}" --provenance --access public --ignore-scripts
 
-      - name: Verify the published package installs and runs
-        env:
-          EFFECTIVE_TAG: ${{ inputs.tag || github.ref_name }}
+  verify-npm:
+    name: Verify npm package and provenance
+    needs: [publish-npm]
+    runs-on: ubuntu-latest
+    # Installs and runs the published package, so it gets no token at all.
+    permissions: {}
+
+    steps:
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+
+      - name: Wait for the version and its provenance on the registry
         run: |
-          PKG_VERSION="${EFFECTIVE_TAG#v}"
-          for i in 1 2 3 4 5 6; do
-            if npm view "@stelnyx/secgate@${PKG_VERSION}" version >/dev/null 2>&1; then break; fi
-            echo "Waiting for @stelnyx/secgate@${PKG_VERSION} on the registry (attempt $i)"
-            sleep 15
+          set -euo pipefail
+          PKG_VERSION="${RELEASE_TAG#v}"
+          PREDICATE=""
+          for i in $(seq 1 10); do
+            PREDICATE="$(npm view "@stelnyx/secgate@${PKG_VERSION}" dist.attestations.provenance.predicateType 2>/dev/null || true)"
+            if [ "$PREDICATE" = "https://slsa.dev/provenance/v1" ]; then break; fi
+            echo "Waiting for @stelnyx/secgate@${PKG_VERSION} provenance (attempt $i, got: '$PREDICATE')"
+            sleep 20
           done
-          npm install -g "@stelnyx/secgate@${PKG_VERSION}"
-          secgate --version
-          PREDICATE="$(npm view "@stelnyx/secgate@${PKG_VERSION}" dist.attestations.provenance.predicateType)"
           if [ "$PREDICATE" != "https://slsa.dev/provenance/v1" ]; then
             echo "Published version has no npm provenance (got: '$PREDICATE')"
             exit 1
           fi
           echo "npm provenance present: $PREDICATE"
+
+      - name: Install the published package and run it
+        run: |
+          set -euo pipefail
+          PKG_VERSION="${RELEASE_TAG#v}"
+          npm install -g --ignore-scripts "@stelnyx/secgate@${PKG_VERSION}"
+          OUT="$(secgate --version)"
+          if [ "$OUT" != "$PKG_VERSION" ]; then
+            echo "secgate --version printed '$OUT', expected '$PKG_VERSION'"
+            exit 1
+          fi
+          echo "secgate $OUT runs"
