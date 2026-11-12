@@ -23,6 +23,10 @@ inputs:
     description: Output formats — comma-separated list of json, html, sarif
     required: false
     default: "json,html"
+  secgate-path:
+    description: Path to a local secgate.js to run instead of the published npm package (used by this repo's own CI to scan the code under test)
+    required: false
+    default: ""
 
 outputs:
   report-path:
@@ -36,9 +40,9 @@ runs:
   using: composite
   steps:
     - name: Set up Node.js
-      uses: actions/setup-node@v5
+      uses: actions/setup-node@v7
       with:
-        node-version: "20"
+        node-version: "22"
 
     - name: Run SecGate
       id: run-secgate
@@ -48,6 +52,7 @@ runs:
         SECGATE_APPLY: ${{ inputs.apply }}
         SECGATE_FORMAT: ${{ inputs.format }}
         SECGATE_FAIL_ON: ${{ inputs.fail-on }}
+        SECGATE_PATH: ${{ inputs.secgate-path }}
       run: |
         ARGS=("$SECGATE_TARGET")
         if [ "$SECGATE_APPLY" = "true" ]; then
@@ -58,7 +63,14 @@ runs:
         TARGET_ABS="$(realpath "$SECGATE_TARGET")"
         REPO_NAME="$(basename "$TARGET_ABS")"
 
-        npx --yes @stelnyx/secgate "${ARGS[@]}" || SECGATE_EXIT=$?
+        if [ -n "$SECGATE_PATH" ]; then
+          echo "Running local SecGate: node $SECGATE_PATH ${ARGS[*]}"
+          node "$SECGATE_PATH" "${ARGS[@]}" || SECGATE_EXIT=$?
+        else
+          # "@latest" forces the registry package; a bare name resolves to the
+          # caller's own project when it is named @stelnyx/secgate (exit 127).
+          npx --yes @stelnyx/secgate@latest "${ARGS[@]}" || SECGATE_EXIT=$?
+        fi
 
         echo "report-path=secgate-v7-report.json" >> "$GITHUB_OUTPUT"
 

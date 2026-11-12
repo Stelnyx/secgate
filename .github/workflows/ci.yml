@@ -11,12 +11,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Install dev dependencies
         run: npm ci
@@ -39,22 +39,31 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: Install npm dependencies
+        run: npm ci
 
       - name: Install external scanners
         uses: ./.github/actions/install-scanners
 
-      - name: Run SecGate (self-scan)
+      - name: Run SecGate (self-scan of the checkout)
         id: secgate
         uses: ./.github/actions/secgate
         with:
           target: "."
           fail-on: "critical,high"
           format: "json,html"
+          secgate-path: "./secgate.js"
 
       - name: Upload self-scan report
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: secgate-self-scan-${{ github.run_number }}
           path: |
