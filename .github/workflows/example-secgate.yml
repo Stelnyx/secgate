@@ -1,8 +1,5 @@
 # Example workflow: SecGate security gate with SARIF upload and artifact archival.
 #
-# NOTE: GitHub Actions are currently disabled for this repository.
-# This file is a reference implementation — enable Actions in repo settings to activate it.
-#
 # Usage in your own repository:
 #   uses: Stelnyx/SecGate/.github/actions/secgate@main
 #
@@ -16,9 +13,6 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main]
-  schedule:
-    # Run nightly at 02:00 UTC
-    - cron: "0 2 * * *"
   workflow_dispatch:
 
 jobs:
@@ -35,36 +29,20 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
-      # Install optional external scanners.
-      # SecGate skips any tool that is not on PATH — remove steps you don't need.
-      - name: Install Semgrep
-        run: pip install semgrep --quiet
-
-      - name: Install Gitleaks
-        run: |
-          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz \
-            | sudo tar -xz -C /usr/local/bin gitleaks
-
-      - name: Install osv-scanner
-        run: |
-          curl -sSL -o /tmp/osv-scanner \
-            https://github.com/google/osv-scanner/releases/download/v2.3.5/osv-scanner_linux_amd64
-          sudo install -m 755 /tmp/osv-scanner /usr/local/bin/osv-scanner
-
-      - name: Install Trivy
-        uses: aquasecurity/trivy-action@0.30.0
-        with:
-          scan-type: "rootfs"
-          scan-ref: "."
-          skip-setup-trivy: false
-          exit-code: "0"
+      # Install the external scanners at the versions pinned in this repo.
+      # SecGate skips any tool that is not on PATH. In your own repository,
+      # install the scanners you need (see README) instead of this local action.
+      - name: Install external scanners
+        uses: ./.github/actions/install-scanners
 
       # Run SecGate — emits JSON, HTML, and SARIF.
+      # This repository uses the action at the same commit; in your own
+      # repository use Stelnyx/SecGate/.github/actions/secgate@<full-sha>.
       - name: Run SecGate
         id: secgate
-        uses: Stelnyx/SecGate/.github/actions/secgate@main
+        uses: ./.github/actions/secgate
         with:
           target: "."
           apply: "false"
@@ -74,7 +52,7 @@ jobs:
       # Upload HTML + JSON as build artifacts (always, even on failure).
       - name: Upload HTML + JSON report
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: secgate-report-${{ github.run_number }}
           path: |
@@ -86,7 +64,7 @@ jobs:
       # Requires security-events: write permission and Code Scanning enabled on the repo.
       - name: Upload SARIF to Code Scanning
         if: always() && steps.secgate.outputs.sarif-path != ''
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: ${{ steps.secgate.outputs.sarif-path }}
           category: secgate
