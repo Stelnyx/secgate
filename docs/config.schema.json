@@ -79,7 +79,7 @@
     },
     "requireScanners": {
       "type": "array",
-      "description": "Scanners that must run. If any listed scanner is skipped (not installed, disabled, not applicable) or errors, SecGate exits 2. The --require CLI flag overrides this list. Unknown names are ignored with a warning.",
+      "description": "Scanners that must run. If any listed scanner is skipped (not installed, disabled, not applicable) or errors, SecGate exits 2. The --require CLI flag overrides this list. A value that is not an array, or an unknown name, is an error (exit 2).",
       "items": {
         "type": "string",
         "enum": ["semgrep", "gitleaks", "npm", "osv", "osv-scanner", "trivy"]

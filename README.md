@@ -252,15 +252,19 @@ exits with a clear message unless `--allow-workspace` is supplied.
 
 | Code | Meaning                                            |
 |:----:|----------------------------------------------------|
-| `0`  | PASS — no CRITICAL or HIGH findings                |
+| `0`  | PASS — no CRITICAL or HIGH findings, and every scanner that applies ran |
 | `1`  | FAIL — CRITICAL or HIGH findings present           |
-| `2`  | Invalid target or CLI error; `no scanners available` (none of the five scanners ran); or a scanner listed in `--require` / `requireScanners` did not run |
+| `2`  | Invalid target or CLI error (including an empty or unknown `--require` list, or a `requireScanners` value that is not an array or names an unknown scanner); `no scanners available` (none of the five scanners ran); a scanner listed in `--require` / `requireScanners` did not run; or INCOMPLETE (no blocking findings, but a scanner that applies did not run). `--update-baseline` exits `2` without writing a baseline when no scanner ran or a required one did not |
 
-When some scanners are missing, SecGate still exits `0`/`1` on the findings
-from the scanners that ran, prints `WARNING: N of 5 scanners ran` on stderr with
-an install hint per missing scanner, and reports the missing ones as `n/a`
-(`null` in `toolScores`), never as `100 / 100`. To make a missing scanner fail
-the run, pass `--require semgrep,gitleaks,osv,trivy`.
+A scanner "applies" unless it is disabled in the config, or it has nothing to
+scan (npm audit with no `package.json`). When a scanner that applies is missing,
+errors or times out, SecGate never reports PASS. Blocking findings from the
+scanners that ran still give FAIL (exit `1`); otherwise the status is
+`INCOMPLETE` (exit `2`). SecGate prints `WARNING: N of 5 scanners ran` on stderr
+with an install hint per missing scanner, and reports the missing ones as `n/a`
+(`null` in `toolScores`), never as `100 / 100`. `--require` /
+`requireScanners` (also `--require=semgrep,...`) additionally exit `2` when a
+listed scanner does not run, even if there are blocking findings.
 
 ---
 
@@ -323,7 +327,7 @@ JSON Schema: [`docs/config.schema.json`](docs/config.schema.json)
 | `ignore`             | `string[]`      | `[]`                       | Drop findings whose signature matches (glob `*` supported)                  |
 | `baselineFile`       | `string`        | `.secgate-baseline.json`   | Path to baseline file (relative to target)                                  |
 | `customSemgrepRules` | `string\|null` | `null`                     | Extra `--config=<path>` passed to semgrep                                   |
-| `requireScanners`    | `string[]`      | `[]`                       | Scanners that must run (`semgrep`, `gitleaks`, `npm`, `osv`, `trivy`); exit `2` if one did not. `--require` overrides it |
+| `requireScanners`    | `string[]`      | `[]`                       | Scanners that must run (`semgrep`, `gitleaks`, `npm`, `osv`, `trivy`); exit `2` if one did not. A non-array value or an unknown name also exits `2`. `--require` overrides it |
 
 ### Precedence
 
