@@ -6,6 +6,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + [Semantic Ver
 
 ## [Unreleased]
 
+### Fixed
+- **Release pipeline**: npm publish now runs inside `release.yml`, after the
+  signed GitHub Release is created, with `npm publish --provenance` through
+  npm trusted publishing. It publishes the same tarball that is signed and
+  attached to the release. The separate `publish.yml` was removed: it waited
+  for a `release` event created with `GITHUB_TOKEN`, which never triggers
+  other workflows, so it never ran. The release build now also runs the
+  dependency guard and lint.
+
+### Changed
+- **Docs**: removed the npm provenance badge and the provenance claims that
+  were false for `0.2.14` (published without provenance, tag or GitHub
+  Release) from `README.md`, `SECURITY.md` and `docs/index.html`. The docs
+  page no longer hard-codes a version. `CONTRIBUTING.md` now describes one
+  tag-driven release flow.
+
 ## [0.2.14] - 2026-07-10
 
 ### Fixed

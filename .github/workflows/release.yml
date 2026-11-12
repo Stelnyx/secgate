@@ -10,6 +10,11 @@ on:
         description: "Tag to build (e.g. v0.2.5) — must already exist in the repo"
         required: true
         type: string
+      skip_npm:
+        description: "Skip npm publish (for re-runs of an already-published version)"
+        required: false
+        default: false
+        type: boolean
 
 permissions: {}
 
@@ -56,6 +61,12 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
+      - name: Dependency guard
+        run: npm run check:deps
+
+      - name: Lint
+        run: npm run lint
+
       - name: Run smoke tests
         run: npm test
 
@@ -77,8 +88,7 @@ jobs:
         env:
           EFFECTIVE_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
-          npm pack
-          TARBALL=$(ls stelnyx-secgate-*.tgz | head -n1)
+          TARBALL="$(npm pack | tail -n1)"
           RELEASE_NAME="secgate-${EFFECTIVE_TAG#v}.tgz"
           mv "$TARBALL" "$RELEASE_NAME"
           echo "tarball_name=$RELEASE_NAME" >> "$GITHUB_OUTPUT"
@@ -223,3 +233,54 @@ jobs:
             dist/${{ needs.build.outputs.sbom_name }}.cosign.bundle
             dist/${{ needs.provenance.outputs.provenance-name }}
             dist/SHA256SUMS
+
+  publish-npm:
+    name: npm publish (provenance)
+    needs: [build, sign-and-release]
+    if: ${{ !inputs.skip_npm }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      # npm trusted publishing (OIDC) needs npm >= 11.5.1; Node 22 ships npm 10.
+      - name: Install npm with trusted publishing support
+        run: npm install -g npm@11.21.2
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: release-artifacts
+          path: ./dist
+
+      # Publish the same tarball that was hashed, signed and attached to the
+      # GitHub Release, so the npm artifact and the release artifact match.
+      - name: Publish to npm with provenance
+        working-directory: ./dist
+        run: npm publish "./${{ needs.build.outputs.tarball_name }}" --provenance --access public
+
+      - name: Verify the published package installs and runs
+        env:
+          EFFECTIVE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          PKG_VERSION="${EFFECTIVE_TAG#v}"
+          for i in 1 2 3 4 5 6; do
+            if npm view "@stelnyx/secgate@${PKG_VERSION}" version >/dev/null 2>&1; then break; fi
+            echo "Waiting for @stelnyx/secgate@${PKG_VERSION} on the registry (attempt $i)"
+            sleep 15
+          done
+          npm install -g "@stelnyx/secgate@${PKG_VERSION}"
+          secgate --version
+          PREDICATE="$(npm view "@stelnyx/secgate@${PKG_VERSION}" dist.attestations.provenance.predicateType)"
+          if [ "$PREDICATE" != "https://slsa.dev/provenance/v1" ]; then
+            echo "Published version has no npm provenance (got: '$PREDICATE')"
+            exit 1
+          fi
+          echo "npm provenance present: $PREDICATE"

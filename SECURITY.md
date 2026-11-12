@@ -71,7 +71,7 @@ We use GitHub Security Advisories as the primary tracking mechanism:
 3. Private fork used for patch development.
 4. Reporter credited in advisory unless anonymity is requested.
 5. Advisory published simultaneously with patch release.
-6. Notification pushed to npm advisory DB via provenance metadata.
+6. `npm audit` reports the advisory once it is in the GitHub Advisory Database.
 
 ---
 
@@ -103,7 +103,10 @@ See [`docs/threat-model.md`](docs/threat-model.md) for the full STRIDE model, tr
 
 ## Supply-chain trust
 
-Every tagged release (`vX.Y.Z`) ships with verifiable provenance:
+The GitHub Releases `v0.2.9` to `v0.2.13` ship with these verifiable assets.
+Older tags do not. `0.2.14` was published to npm without a tag or a GitHub
+Release, so it has none of them. From the next release, every `vX.Y.Z` tag
+produces them through `.github/workflows/release.yml`.
 
 | Artifact | Filename pattern | Purpose |
 |---|---|---|
@@ -113,9 +116,13 @@ Every tagged release (`vX.Y.Z`) ships with verifiable provenance:
 | SLSA L3 attestation | `secgate-vX.Y.Z.intoto.jsonl` | Non-falsifiable build provenance (SLSA v1.0, Level 3) |
 | Checksums | `SHA256SUMS` | SHA-256 manifest for tarball + SBOM |
 
-npm registry metadata also carries [npm provenance](https://docs.npmjs.com/generating-provenance-statements)
-through npm Trusted Publishing from the `Publish` GitHub Actions workflow for
-the `@stelnyx/secgate` package.
+npm versions `0.2.9` and `0.2.11` to `0.2.13` carry
+[npm provenance](https://docs.npmjs.com/generating-provenance-statements);
+`0.2.14` does not. From the next release, the `Release` workflow publishes the
+signed tarball to npm with provenance through npm Trusted Publishing. Check a
+version with
+`npm view @stelnyx/secgate@<version> dist.attestations.provenance.predicateType`
+(expected: `https://slsa.dev/provenance/v1`).
 
 ### Trust root (keyless cosign)
 
@@ -127,9 +134,8 @@ the exact workflow that produced it:
 - Expected signer identity (regex):
   `^https://github\.com/Stelnyx/SecGate/\.github/workflows/release\.yml@refs/tags/.*`
 
-The npm publish identity is separate from the release-artifact signing identity:
-Trusted Publishing is configured for `.github/workflows/publish.yml`, while
-release tarballs/SBOMs are signed by `.github/workflows/release.yml`.
+The npm publish and the release-artifact signatures come from the same
+workflow, `.github/workflows/release.yml`.
 
 The Sigstore transparency log (Rekor) entry is the public record. There is no
 "public key" to rotate; if the signer identity or issuer ever changes, that is
