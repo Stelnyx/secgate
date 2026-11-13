@@ -13,7 +13,6 @@ One command. One report. One exit code.
   <a href="https://www.npmjs.com/package/@stelnyx/secgate"><img alt="npm" src="https://img.shields.io/npm/v/@stelnyx/secgate.svg?style=flat-square&labelColor=0a0a0a&color=00cc66"></a>
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-00cc66.svg?style=flat-square&labelColor=0a0a0a"></a>
   <img alt="node" src="https://img.shields.io/badge/node-%E2%89%A518-00cc66.svg?style=flat-square&labelColor=0a0a0a">
-  <img alt="provenance" src="https://img.shields.io/badge/npm%20provenance-signed-00cc66.svg?style=flat-square&labelColor=0a0a0a">
   <a href="SECURITY.md"><img alt="security" src="https://img.shields.io/badge/security-policy-00cc66.svg?style=flat-square&labelColor=0a0a0a"></a>
   <a href="https://github.com/Stelnyx/SecGate/actions/workflows/ci.yml"><img alt="self-scan" src="https://github.com/Stelnyx/SecGate/actions/workflows/ci.yml/badge.svg?branch=main"></a>
 </p>
@@ -26,7 +25,7 @@ One command. One report. One exit code.
 
 **Honest positioning.** SecGate is a **triage accelerator**, not a defect oracle. Dogfooded against a 2,628-file production codebase: **1,858 → 46 actionable findings — 98% noise demoted**. The wrapped scanners are each noisy in isolation (industry estimate: ~70% of raw SAST/SCA output is signal-less). SecGate's job is to surface what's actionable and demote the rest — see [What we demote (and why)](#what-we-demote-and-why).
 
-**Status.** Early release (`v0.2.14`). Releases publish from GitHub Actions with npm trusted publishing and provenance. Report vulnerabilities via [SECURITY.md](SECURITY.md).
+**Status.** Early release (`v0.2.14`). `v0.2.14` was published to npm without provenance and without a GitHub Release; from the next release, the tag-triggered release workflow publishes to npm with provenance. Report vulnerabilities via [SECURITY.md](SECURITY.md).
 
 **Accuracy contract.** SecGate's aggregation pipeline is deterministic — same inputs produce JSON-byte-identical findings, score, and gate status across every run. Two test suites lock the contract:
 
@@ -460,16 +459,15 @@ See [`.github/workflows/example-secgate.yml`](.github/workflows/example-secgate.
 
 ### Releasing SecGate
 
-Package releases are published by the `Publish` GitHub Actions workflow when a
-GitHub Release is published. The workflow uses npm trusted publishing through
-OIDC, so there is no npm token in GitHub secrets and no local publish step.
-
-Release summary: bump the npm version, commit and push `main`, push a matching
-`vX.Y.Z` tag, create a GitHub Release from that tag, then confirm the dependency
-guard, workflow, and npm provenance badge. The release path runs
-`npm run check:deps` to block accidental `file:`, `link:`, or `workspace:`
-dependencies before publish. See [CONTRIBUTING.md](CONTRIBUTING.md#releases)
-for the exact checklist and npm Trusted Publisher settings.
+Pushing a `vX.Y.Z` tag runs the `Release` workflow
+(`.github/workflows/release.yml`). It runs the dependency guard
+(`npm run check:deps`, which blocks `file:`, `link:` and `workspace:`
+dependencies), lint and tests, builds the tarball and SBOM, signs them, creates
+the GitHub Release, and publishes the same tarball to npm with
+`npm publish --provenance` through npm trusted publishing (OIDC, no npm token).
+Do not create the GitHub Release by hand. See
+[CONTRIBUTING.md](CONTRIBUTING.md#releases) for the checklist and the npm
+Trusted Publisher settings.
 
 ---
 

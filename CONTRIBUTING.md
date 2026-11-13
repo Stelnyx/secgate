@@ -31,36 +31,55 @@ node secgate.js --help
 
 ## Releases
 
-SecGate publishes through npm trusted publishing from GitHub Actions. Do not
-store `NPM_TOKEN` / `NODE_AUTH_TOKEN` secrets for release publishing, and do not
-publish from a local machine with a `--provenance=false` workaround.
+One workflow does the whole release: `.github/workflows/release.yml`, triggered
+by pushing a `vX.Y.Z` tag. It runs the dependency guard, lint and tests, builds
+the tarball and CycloneDX SBOM, generates SLSA provenance, signs both files with
+cosign (keyless), creates the GitHub Release with those assets, and then
+publishes the same tarball to npm with `npm publish --provenance`.
+
+Do not create the GitHub Release by hand (the workflow creates it), do not store
+`NPM_TOKEN` / `NODE_AUTH_TOKEN` secrets, and do not publish from a local machine.
+npm authenticates the publish through npm trusted publishing (GitHub OIDC).
 
 Trusted Publisher settings on npmjs.com for `@stelnyx/secgate`:
 
 - Publisher: GitHub Actions
 - Organization/user: `Stelnyx`
-- Repository: `secgate`
-- Workflow filename: `publish.yml`
-- Environment: leave blank
-- Allowed action: `npm publish`
+- Repository: `secgate` (must match the current GitHub repository name)
+- Workflow filename: `release.yml`
+- Environment: `npm` (the GitHub environment of the `publish-npm` job)
 
 The repository must remain public for npm to show provenance. The package's
-`repository` field must keep matching the GitHub repository exactly.
+`repository` field must keep matching the GitHub repository URL.
 
 Release flow:
 
-1. Bump `package.json` and `package-lock.json` to the next semver version.
-2. Run `npm ls @stelnyx/report-theme` and confirm it shows `0.1.4` without a
-   local `-> ../report-theme` symlink.
-3. Run `npm run check:deps`, `npm test`, `npm run lint`, and `npm pack --dry-run`.
-   The dependency guard fails publish if any `file:`, `link:`, `workspace:`,
-   `resolved: "../..."`, or `link: true` dependency entry is present.
-4. Confirm `npm pack --dry-run` includes `CHANGELOG.md`.
-5. Commit the version bump and push `main`.
-6. Create and push a matching tag, for example `git tag v0.2.15 && git push origin v0.2.15`.
-7. Create a GitHub Release from that tag.
-8. Confirm the `Publish` workflow runs green.
-9. Confirm the new npm version shows provenance, then run `npm audit signatures`.
+1. Bump `package.json` and `package-lock.json` to the next semver version
+   (`npm version <x.y.z> --no-git-tag-version`).
+2. Move the `[Unreleased]` entries in `CHANGELOG.md` under the new version.
+3. Run `npm run check:deps`, `npm run lint`, `npm test` and `npm pack --dry-run`.
+   Confirm the dry run includes `CHANGELOG.md` and that `npm ls @stelnyx/report-theme`
+   shows a registry version, not a local `-> ../report-theme` symlink.
+4. Merge the version bump to `main`.
+5. Tag that commit and push the tag, for example
+   `git fetch origin && git tag v0.2.15 origin/main && git push origin v0.2.15`.
+   The workflow refuses a tag on a commit that is not on `main`.
+6. Watch the `Release` workflow until every job is green.
+7. Confirm npm provenance:
+   `npm view @stelnyx/secgate@0.2.15 dist.attestations.provenance.predicateType`
+   must print `https://slsa.dev/provenance/v1`. Then run `npm audit signatures`
+   in a project that installs it.
+
+The workflow refuses to run from a branch, for a tag that is not `vX.Y.Z`, for
+a version already on npm, or when a GitHub Release for the tag already exists.
+If a later job fails, use "Re-run failed jobs" on the same run so the release
+reuses the artifacts that were already built and signed.
+
+A manual run (`workflow_dispatch`) must be started from the tag itself ("Use
+workflow from" set to the tag, and the `tag` input equal to it). Use
+`skip_npm: true` only to add release assets for a version that is already on
+npm; the run fails unless the rebuilt tarball is byte-identical to the one on
+npm.
 
 ## Commit message format
 

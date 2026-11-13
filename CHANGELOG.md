@@ -6,6 +6,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + [Semantic Ver
 
 ## [Unreleased]
 
+### Fixed
+- **Release pipeline**: npm publish now runs inside `release.yml`, after the
+  signed GitHub Release is created, with `npm publish --provenance` through
+  npm trusted publishing. It publishes the same tarball that is signed and
+  attached to the release. The separate `publish.yml` was removed: it waited
+  for a `release` event created with `GITHUB_TOKEN`, which never triggers
+  other workflows, so it never ran. The release build now also runs the
+  dependency guard and lint.
+- **Release hardening**: only the `publish-npm` job can publish to npm, once
+  the npm Trusted Publisher record names the `npm` GitHub environment it runs
+  in (`provenance` and `sign-and-release` also hold `id-token: write`, for SLSA
+  and keyless cosign). `sign-and-release` runs in the protected `release`
+  environment. The workflow runs only from a `vX.Y.Z` tag that points at the
+  commit that triggered the run (`GITHUB_SHA`, which is what is checked out)
+  and is on `main`, checks the
+  tarball sha256 before `npm publish`, refuses to overwrite an existing GitHub
+  Release or republish a version, and verifies the published package in a
+  separate job with no token and no lifecycle scripts.
+
 ### Changed
 - **Breaking: exit code 2 on partial coverage.** A scan where a scanner that
   applies did not run (not installed, timed out, or failed in a way SecGate
@@ -23,6 +42,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + [Semantic Ver
   `100 / 100`.
 - To skip a scanner on purpose, set `"scanners": { "<name>": false }` in
   `.secgate.config.json`; a disabled scanner is not a gap.
+- **Docs**: removed the npm provenance badge and the provenance claims that
+  were false for `0.2.14` (published without provenance, tag or GitHub
+  Release) from `README.md`, `SECURITY.md` and `docs/index.html`. The docs
+  page no longer hard-codes a version. `CONTRIBUTING.md` now describes one
+  tag-driven release flow.
 
 ### Added
 - `--require <tools>` (also `--require=<tools>`) and the `requireScanners`
