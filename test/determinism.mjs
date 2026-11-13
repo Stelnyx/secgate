@@ -12,7 +12,10 @@
 //   3. summarize / resolveStatus
 //   4. JSON.stringify(findings) byte equality across two independent runs
 
+import fs from "fs";
+import os from "os";
 import path from "path";
+import { spawnSync } from "child_process";
 import { fileURLToPath } from "url";
 
 const libDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "lib");
@@ -37,6 +40,9 @@ function test(name, fn) {
   }
 }
 
+function assert(cond, msg) {
+  if (!cond) throw new Error(msg);
+}
 function assertEq(a, b, msg) {
   if (a !== b) throw new Error(`${msg ?? "eq"}: expected ${JSON.stringify(b)}, got ${JSON.stringify(a)}`);
 }
@@ -166,6 +172,58 @@ test("determinism: reversing input order does not change deduped result set", ()
   assertEq(JSON.stringify(a), JSON.stringify(b), "unique key set equal regardless of input order");
 });
 
+/* ── end-to-end: report files are byte-reproducible (issue #75) ── */
+const bin = path.resolve(libDir, "..", "secgate.js");
+// One fixed scan dir for every run: the report embeds the target path, so
+// "same inputs" means the same directory.
+const scan = fs.mkdtempSync(path.join(os.tmpdir(), "secgate-det-scan-"));
+fs.writeFileSync(path.join(scan, "package.json"), JSON.stringify({ name: "det-pkg", version: "1.0.0" }));
+function runCli(env) {
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), "secgate-det-out-"));
+  const childEnv = { ...process.env, ...env };
+  delete childEnv.SECGATE_TIMESTAMP;
+  delete childEnv.SOURCE_DATE_EPOCH;
+  Object.assign(childEnv, env);
+  const r = spawnSync("node", [bin, scan, "--output-dir", out], { encoding: "utf-8", env: childEnv, timeout: 120000 });
+  const files = fs.existsSync(out) ? fs.readdirSync(out).sort() : [];
+  const read = ext => {
+    const f = files.find(n => n.endsWith(ext));
+    return f ? fs.readFileSync(path.join(out, f)) : null;
+  };
+  const res = { status: r.status, stderr: r.stderr, json: read(".json"), html: read(".html") };
+  fs.rmSync(out, { recursive: true, force: true });
+  return res;
+}
+test("determinism: SECGATE_TIMESTAMP makes JSON and HTML byte-identical across runs", () => {
+  const env = { SECGATE_TIMESTAMP: "2026-01-01T00:00:00Z" };
+  const a = runCli(env);
+  const b = runCli(env);
+  assert(a.json && a.html && b.json && b.html, `report files written (exit ${a.status}): ${a.stderr.slice(0, 200)}`);
+  assert(a.json.equals(b.json), "JSON reports are byte-identical");
+  assert(a.html.equals(b.html), "HTML reports are byte-identical");
+  const rep = JSON.parse(a.json.toString());
+  assertEq(rep.timestamp, "2026-01-01T00:00:00.000Z", "report.timestamp");
+  assert(rep.auditLog.every(e => e.timestamp === "2026-01-01T00:00:00.000Z"), "audit-log timestamps pinned");
+});
+test("determinism: SOURCE_DATE_EPOCH is the fallback, SECGATE_TIMESTAMP wins", () => {
+  const a = runCli({ SOURCE_DATE_EPOCH: "1767225600" });
+  assertEq(JSON.parse(a.json.toString()).timestamp, "2026-01-01T00:00:00.000Z", "epoch timestamp");
+  const b = runCli({ SECGATE_TIMESTAMP: "2026-02-03T04:05:06Z", SOURCE_DATE_EPOCH: "1767225600" });
+  assertEq(JSON.parse(b.json.toString()).timestamp, "2026-02-03T04:05:06.000Z", "explicit variable wins");
+});
+test("determinism: unparsable SECGATE_TIMESTAMP or SOURCE_DATE_EPOCH exits 2", () => {
+  for (const env of [{ SECGATE_TIMESTAMP: "not-a-date" }, { SOURCE_DATE_EPOCH: "abc" }]) {
+    const r = runCli(env);
+    assertEq(r.status, 2, `exit code for ${JSON.stringify(env)}`);
+    assert(/SECGATE_TIMESTAMP|SOURCE_DATE_EPOCH/.test(r.stderr), "error names the variable");
+  }
+});
+test("determinism: without the variables, timestamp is wall-clock", () => {
+  const a = runCli({});
+  const t = Date.parse(JSON.parse(a.json.toString()).timestamp);
+  assert(Math.abs(Date.now() - t) < 300000, "timestamp is current time");
+});
+fs.rmSync(scan, { recursive: true, force: true });
 console.log("-------------------------");
 console.log(`${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);

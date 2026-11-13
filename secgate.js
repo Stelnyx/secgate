@@ -114,6 +114,12 @@ Options:
 
 Environment:
   SECGATE_CONFIRM_APPLY=1   Non-interactive confirmation for --apply
+  SECGATE_TIMESTAMP=<iso>   Use this ISO 8601 time (e.g. 2026-01-01T00:00:00Z)
+                            for report and audit-log timestamps, so report
+                            files are byte-identical across runs. Invalid
+                            value exits 2.
+  SOURCE_DATE_EPOCH=<secs>  Same, in Unix seconds; used when SECGATE_TIMESTAMP
+                            is unset.
   CI=true                   Auto-enables --strip-paths
 
 Config file (.secgate.config.json in target):
@@ -275,6 +281,33 @@ if (configRequired.unknown.length) {
 }
 const requiredScanners = cliRequired ?? configRequired.valid;
 
+// Reproducible timestamp: SECGATE_TIMESTAMP (ISO 8601), else SOURCE_DATE_EPOCH
+// (seconds). Unset or empty means wall-clock time. An invalid value exits 2.
+function resolveTimestamp(env) {
+  const iso = env.SECGATE_TIMESTAMP;
+  if (iso) {
+    const shape = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/;
+    const ms = shape.test(iso) ? Date.parse(iso) : NaN;
+    if (Number.isNaN(ms)) {
+      console.error(`Invalid SECGATE_TIMESTAMP '${iso}'. Use ISO 8601, e.g. 2026-01-01T00:00:00Z.`);
+      process.exit(2);
+    }
+    return new Date(ms).toISOString();
+  }
+  const epoch = env.SOURCE_DATE_EPOCH;
+  if (epoch) {
+    const secs = /^\d+$/.test(epoch) ? Number(epoch) : NaN;
+    const d = new Date(secs * 1000);
+    if (!Number.isSafeInteger(secs) || Number.isNaN(d.getTime())) {
+      console.error(`Invalid SOURCE_DATE_EPOCH '${epoch}'. Use integer seconds since the Unix epoch.`);
+      process.exit(2);
+    }
+    return d.toISOString();
+  }
+  return null;
+}
+const FIXED_TIMESTAMP = resolveTimestamp(process.env);
+const nowIso = () => FIXED_TIMESTAMP ?? new Date().toISOString();
 const findings    = [];
 const suppressions = { count: 0, byRule: {} };
 
@@ -283,7 +316,7 @@ const toolSkipReason = {};
 
 const report = {
   version:       pkg.version,
-  timestamp:     new Date().toISOString(),
+  timestamp:     nowIso(),
   target:        reportTarget,
   mode:          APPLY ? "apply" : "dry-run",
   status:        "PASS",
@@ -299,7 +332,7 @@ const report = {
 };
 
 function auditLog(event, detail) {
-  const entry = { timestamp: new Date().toISOString(), event, target: reportTarget, ...detail };
+  const entry = { timestamp: nowIso(), event, target: reportTarget, ...detail };
   report.auditLog.push(entry);
   console.error(`[audit] ${JSON.stringify(entry)}`);
 }
