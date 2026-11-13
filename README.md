@@ -441,6 +441,11 @@ A composite action is published at `.github/actions/secgate/` in this repo.
 | `apply`   | `false`          | Execute fixable remediations                             |
 | `fail-on` | `critical,high`  | Severity levels that fail the step                       |
 | `format`  | `json,html`      | Output formats — comma-separated: `json`, `html`, `sarif`|
+| `require` | empty            | Scanners that must run (`semgrep,gitleaks,npm,osv,trivy`), passed to the CLI as `--require` |
+
+The step fails when the CLI exits 2 (incomplete scan, no scanner ran, or a
+`require`d scanner did not run), whatever `fail-on` says. `fail-on` only
+decides whether findings fail a scan that ran to completion.
 
 **Action outputs**
 

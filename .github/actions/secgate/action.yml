@@ -23,6 +23,10 @@ inputs:
     description: Output formats — comma-separated list of json, html, sarif
     required: false
     default: "json,html"
+  require:
+    description: Comma-separated scanners that must run (semgrep,gitleaks,npm,osv,trivy). Passed to the CLI as --require; the step fails with exit 2 if one did not run. Empty uses the CLI default (requireScanners from the config file).
+    required: false
+    default: ""
   secgate-path:
     description: Path to a local secgate.js to run instead of the published npm package (used by this repo's own CI to scan the code under test)
     required: false
@@ -52,6 +56,7 @@ runs:
         SECGATE_APPLY: ${{ inputs.apply }}
         SECGATE_FORMAT: ${{ inputs.format }}
         SECGATE_FAIL_ON: ${{ inputs.fail-on }}
+        SECGATE_REQUIRE: ${{ inputs.require }}
         SECGATE_PATH: ${{ inputs.secgate-path }}
       run: |
         ARGS=("$SECGATE_TARGET")
@@ -59,6 +64,9 @@ runs:
           ARGS+=("--apply")
         fi
         ARGS+=("--format" "$SECGATE_FORMAT")
+        if [ -n "$SECGATE_REQUIRE" ]; then
+          ARGS+=("--require" "$SECGATE_REQUIRE")
+        fi
 
         TARGET_ABS="$(realpath "$SECGATE_TARGET")"
         REPO_NAME="$(basename "$TARGET_ABS")"
@@ -78,13 +86,24 @@ runs:
           echo "sarif-path=${REPO_NAME}.sarif.json" >> "$GITHUB_OUTPUT"
         fi
 
+        # Exit 2 means the scan was not a pass: INCOMPLETE, no scanner ran, a
+        # --require'd scanner did not run, or a usage error. The fail-on filter
+        # below only looks at findings, so it must never override that. Any
+        # other code above 1 (e.g. 127 npx failure, 137 killed) is a crash and
+        # is kept too, even if an older report file is lying around.
+        if [ "${SECGATE_EXIT:-0}" -gt 1 ]; then
+          echo "::error::SecGate exited with code $SECGATE_EXIT (2 = incomplete scan, no scanner ran, or a required scanner did not run)"
+          exit "$SECGATE_EXIT"
+        fi
+
         # Apply fail-on filter: only exit non-zero for configured severities.
         if [ -f secgate-v7-report.json ]; then
           IFS=',' read -ra LEVELS <<< "$SECGATE_FAIL_ON"
           BLOCK=0
           for level in "${LEVELS[@]}"; do
             LEVEL_UPPER="$(echo "$level" | tr '[:lower:]' '[:upper:]' | tr -d ' ')"
-            COUNT="$(node -e "const r=JSON.parse(require('fs').readFileSync('secgate-v7-report.json'));console.log(r.summary['${LEVEL_UPPER,,}']||0)")"
+            LEVEL_LOWER="$(echo "$LEVEL_UPPER" | tr '[:upper:]' '[:lower:]')"
+            COUNT="$(node -e "const r=JSON.parse(require('fs').readFileSync('secgate-v7-report.json'));console.log(r.summary['${LEVEL_LOWER}']||0)")"
             if [ "$COUNT" -gt 0 ]; then
               BLOCK=1
               echo "::error::SecGate found $COUNT $LEVEL_UPPER finding(s)"
