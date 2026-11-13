@@ -246,6 +246,16 @@ test("SARIF rules array deduplicates by ruleId", () => {
   fs.rmSync(d, { recursive: true, force: true });
 });
 
+test("SARIF marks runs of scanners disabled by the target config (#84)", () => {
+  const d = scratchDir("disabled");
+  fs.writeFileSync(path.join(d, ".secgate.config.json"), JSON.stringify({ scanners: { semgrep: false } }));
+  const { sarif } = runWithStubs(d, {}, ["--format", "sarif"]);
+  const semgrepRun = sarif.runs.find(r => r.tool.driver.name === "Semgrep");
+  const gitleaksRun = sarif.runs.find(r => r.tool.driver.name === "Gitleaks");
+  assertEq(semgrepRun.properties.disabledByConfig, true, "semgrep disabledByConfig");
+  assertEq(gitleaksRun.properties.disabledByConfig, undefined, "gitleaks has no disabledByConfig");
+  fs.rmSync(d, { recursive: true, force: true });
+});
 test("SARIF LOW severity maps to level: note", () => {
   const lowPayload = JSON.stringify({
     results: [

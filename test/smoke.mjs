@@ -235,6 +235,39 @@ test("scanners disabled in config are not a gap → PASS, exit 0", () => {
     assertEq(r.code, 0, "exit (only disabled / not-applicable scanners skipped)");
     if (!r.rep) throw new Error("report not written");
     assertEq(r.rep.status, "PASS", "status");
+    assertEq(JSON.stringify(r.rep.disabledByConfig), JSON.stringify(["semgrep", "osv", "trivy"]), "disabledByConfig");
+    assertContains(r.stdout, "disabled by the scanned repo", "NOTE in console verdict");
+  } finally {
+    fs.rmSync(binDir, { recursive: true, force: true });
+    fs.rmSync(target, { recursive: true, force: true });
+  }
+});
+test("--require on a scanner the target config disables → exit 2, INCOMPLETE (#84)", () => {
+  const binDir = makeBinDir({ gitleaks: "echo '[]'" });
+  const target = makeEvalTarget();
+  fs.writeFileSync(
+    path.join(target, ".secgate.config.json"),
+    JSON.stringify({ scanners: { semgrep: false, osv: false, trivy: false } })
+  );
+  try {
+    const r = runIsolated(binDir, target, ["--require", "semgrep,gitleaks"]);
+    assertEq(r.code, 2, "exit");
+    assertContains(r.stderr, "semgrep (disabled in config)", "stderr names the disabled scanner");
+    if (!r.rep) throw new Error("report not written");
+    assertEq(r.rep.status, "INCOMPLETE", "status");
+  } finally {
+    fs.rmSync(binDir, { recursive: true, force: true });
+    fs.rmSync(target, { recursive: true, force: true });
+  }
+});
+test("no scanner disabled in config → disabledByConfig empty, no NOTE (#84)", () => {
+  const binDir = makeBinDir({ gitleaks: "echo '[]'" });
+  const target = makeEvalTarget();
+  try {
+    const r = runIsolated(binDir, target);
+    if (!r.rep) throw new Error("report not written");
+    assertEq(JSON.stringify(r.rep.disabledByConfig), "[]", "disabledByConfig");
+    assertNotContains(r.stdout, "disabled by the scanned repo", "no NOTE");
   } finally {
     fs.rmSync(binDir, { recursive: true, force: true });
     fs.rmSync(target, { recursive: true, force: true });

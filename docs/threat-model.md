@@ -98,6 +98,7 @@ Ranked by blast radius.
 | Attacker modifies `secgate-v7-report.json` between runs | Filename is predictable; CI artifact upload uses run-scoped storage. Do not trust reports from across runs |
 | Scanner binary tampered in-place | Future: verify SBOM + signatures (see #29). Today: rely on package-manager integrity |
 
+| Scanned repo turns scanners off through its own `.secgate.config.json` (`scanners.<name>: false`, or its own `requireScanners`) and still gets PASS | Config is read from the untrusted target, so only the `--require` flag (action input `require`) set in the workflow is trusted: a required scanner that the config disables exits 2. The console prints a NOTE and the JSON report lists `disabledByConfig`; SARIF runs carry `properties.disabledByConfig`. Use `--require` for pull requests |
 ### R — Repudiation
 
 | Threat | Mitigation |
