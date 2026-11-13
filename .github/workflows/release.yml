@@ -58,23 +58,37 @@ jobs:
             exit 1
           fi
 
+      # Check out the exact commit this run was triggered for (GITHUB_SHA), not
+      # the tag name, so a tag moved after the trigger cannot change what is
+      # built. Full history is needed for the ancestor check below.
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ github.sha }}
+          fetch-depth: 0
           persist-credentials: false
 
-      - name: Verify the tag points at the checked-out commit
+      - name: Verify the tag points at the triggering commit
         run: |
           set -euo pipefail
-          git fetch --no-tags --depth=1 origin "+refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
+          git fetch --no-tags origin "+refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
           TAG_COMMIT="$(git rev-parse --verify "refs/tags/${RELEASE_TAG}^{commit}")"
           HEAD_COMMIT="$(git rev-parse HEAD)"
-          if [ "$TAG_COMMIT" != "$HEAD_COMMIT" ]; then
-            echo "Tag $RELEASE_TAG points at $TAG_COMMIT but the checkout is $HEAD_COMMIT"
+          if [ "$TAG_COMMIT" != "$GITHUB_SHA" ] || [ "$HEAD_COMMIT" != "$GITHUB_SHA" ]; then
+            echo "Tag $RELEASE_TAG points at $TAG_COMMIT, run commit is $GITHUB_SHA, checkout is $HEAD_COMMIT"
             exit 1
           fi
-          echo "Tag $RELEASE_TAG -> $TAG_COMMIT"
+          echo "Tag $RELEASE_TAG -> $TAG_COMMIT (= GITHUB_SHA)"
+
+      - name: Verify the tagged commit is on main
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "+refs/heads/main:refs/remotes/origin/main"
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "Tagged commit $GITHUB_SHA is not an ancestor of origin/main; release only merged commits"
+            exit 1
+          fi
+          echo "$GITHUB_SHA is on origin/main"
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -204,7 +218,8 @@ jobs:
             ${{ steps.pack.outputs.tarball_name }}
             ${{ steps.sbom.outputs.sbom_name }}
           if-no-files-found: error
-          retention-days: 7
+          # Long enough for a delayed npm approval or a late "Re-run failed jobs".
+          retention-days: 30
 
   provenance:
     name: SLSA L3 provenance
@@ -226,6 +241,9 @@ jobs:
     needs: [build, provenance]
     runs-on: ubuntu-latest
     # id-token is for keyless cosign. This job runs no project code.
+    # The "release" environment holds it for a required reviewer before the
+    # signed GitHub Release is created (configured in the repo settings).
+    environment: release
     permissions:
       contents: write
       id-token: write
@@ -238,13 +256,13 @@ jobs:
 
     steps:
       - name: Download release artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release-artifacts
           path: ./dist
 
       - name: Download SLSA attestation
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ${{ needs.provenance.outputs.provenance-name }}
           path: ./dist
@@ -263,7 +281,7 @@ jobs:
           echo "Release gate passed - tarball, SBOM, and SLSA attestation present."
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3.7.0
+        uses: sigstore/cosign-installer@dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da # v3.7.0
         with:
           cosign-release: "v2.4.1"
 
@@ -303,7 +321,7 @@ jobs:
           echo "cosign gate passed."
 
       - name: Create GitHub Release and upload assets
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}

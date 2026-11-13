@@ -62,7 +62,8 @@ Release flow:
    shows a registry version, not a local `-> ../report-theme` symlink.
 4. Merge the version bump to `main`.
 5. Tag that commit and push the tag, for example
-   `git tag v0.2.15 && git push origin v0.2.15`.
+   `git fetch origin && git tag v0.2.15 origin/main && git push origin v0.2.15`.
+   The workflow refuses a tag on a commit that is not on `main`.
 6. Watch the `Release` workflow until every job is green.
 7. Confirm npm provenance:
    `npm view @stelnyx/secgate@0.2.15 dist.attestations.provenance.predicateType`
