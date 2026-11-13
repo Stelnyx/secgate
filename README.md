@@ -61,7 +61,9 @@ Penalty per finding: CRITICAL −25 · HIGH −10 · MEDIUM −3 · LOW −1 · 
 npx @stelnyx/secgate .
 ```
 
-Runs all five scanners against the current directory, writes a JSON report, a self-contained HTML report, and (optionally) SARIF. Exit `0` on clean, `1` on CRITICAL/HIGH findings. That's the whole product.
+Runs every scanner it finds on your `PATH` against the current directory, writes a JSON report, a self-contained HTML report, and (optionally) SARIF. Exit `0` on clean, `1` on CRITICAL/HIGH findings, `2` when no scanner could run.
+
+Without extra installs only **npm audit** runs (it ships with Node.js, and needs a `package.json` plus lockfile in the target). **Semgrep, Gitleaks, osv-scanner and Trivy** run only when they are installed and on `PATH` — see [Prerequisites](#prerequisites). Missing scanners are listed in a `WARNING: N of 5 scanners ran` line and shown as `n/a`, never as a pass.
 
 ---
 
@@ -161,7 +163,7 @@ SecGate is **not** a SOC platform, a compliance tool, or a vulnerability managem
 
 ## Prerequisites
 
-Node.js `>=18`. External scanners are optional — install only the ones you want to run.
+Node.js `>=18`. npm audit needs nothing else. The other four scanners are separate installs and must be on `PATH`; any scanner that is not installed is skipped and reported as `n/a`. Use `--require <tools>` to make a missing scanner exit `2`.
 
 ```bash
 # macOS
@@ -250,9 +252,26 @@ exits with a clear message unless `--allow-workspace` is supplied.
 
 | Code | Meaning                                            |
 |:----:|----------------------------------------------------|
-| `0`  | PASS — no CRITICAL or HIGH findings                |
+| `0`  | PASS — no CRITICAL or HIGH findings, and every scanner that applies ran |
 | `1`  | FAIL — CRITICAL or HIGH findings present           |
-| `2`  | Invalid target or CLI error                        |
+| `2`  | Invalid target or CLI error (including an empty or unknown `--require` list, or a `requireScanners` value that is not an array or names an unknown scanner); `no scanners available` (none of the five scanners ran); a scanner listed in `--require` / `requireScanners` did not run; or INCOMPLETE (no blocking findings, but a scanner that applies did not run). `--update-baseline` exits `2` without writing a baseline when no scanner ran or a required one did not |
+
+A scanner "applies" unless it is disabled in the config (`"scanners": { "<name>": false }`,
+the explicit opt-out), or it has nothing to scan (npm audit with no
+`package.json`). When a scanner that applies is not installed, times out, or
+fails in a way SecGate detects (unparsable output, a failed Trivy image pull),
+SecGate does not report PASS. Trivy counts as ran only when its filesystem scan
+ran and its image scan did not fail; an image scan with no Dockerfile or no
+`FROM` image to scan is not applicable and is not a gap. Known gap
+([#82](https://github.com/Stelnyx/SecGate/issues/82)): Gitleaks and osv-scanner
+runs that fail but print nothing on stdout are still counted as clean.
+Blocking findings from the
+scanners that ran still give FAIL (exit `1`); otherwise the status is
+`INCOMPLETE` (exit `2`). SecGate prints `WARNING: N of 5 scanners ran` on stderr
+with an install hint per missing scanner, and reports the missing ones as `n/a`
+(`null` in `toolScores`), never as `100 / 100`. `--require` /
+`requireScanners` (also `--require=semgrep,...`) additionally exit `2` when a
+listed scanner does not run, even if there are blocking findings.
 
 ---
 
@@ -315,6 +334,7 @@ JSON Schema: [`docs/config.schema.json`](docs/config.schema.json)
 | `ignore`             | `string[]`      | `[]`                       | Drop findings whose signature matches (glob `*` supported)                  |
 | `baselineFile`       | `string`        | `.secgate-baseline.json`   | Path to baseline file (relative to target)                                  |
 | `customSemgrepRules` | `string\|null` | `null`                     | Extra `--config=<path>` passed to semgrep                                   |
+| `requireScanners`    | `string[]`      | `[]`                       | Scanners that must run (`semgrep`, `gitleaks`, `npm`, `osv`, `trivy`); exit `2` if one did not. A non-array value or an unknown name also exits `2`. `--require` overrides it |
 
 ### Precedence
 
@@ -363,7 +383,9 @@ Suppressed findings are excluded from counters. The report's `suppressions` sect
 # .github/workflows/secgate.yml
 - name: Run SecGate
   run: npx @stelnyx/secgate .
-  # exits 1 on CRITICAL or HIGH findings — blocks the pipeline
+  # exit 1 on CRITICAL or HIGH findings; exit 2 when no scanner ran, a
+  # required scanner did not run, or a scanner that applies did not run
+  # (INCOMPLETE). Both block the pipeline. See "Exit codes" above.
 ```
 
 ### Non-blocking (report only)
@@ -506,7 +528,17 @@ Each run writes:
   "timestamp": "ISO 8601",
   "target": "/absolute/path",
   "mode": "dry-run | apply",
-  "status": "PASS | FAIL",
+  "status": "PASS | FAIL | INCOMPLETE",
+  "securityScore": "0-100, or null when no scanner ran",
+  "toolScores": {
+    "semgrep": "0-100, or null when this scanner did not run",
+    "gitleaks": "…", "npm": "…", "osv": "…", "trivy": "…"
+  },
+  "coverage": {
+    "ran": ["gitleaks", "npm"],
+    "skipped": ["semgrep", "osv", "trivy"],
+    "total": 5
+  },
   "summary": {
     "critical": 0,
     "high": 0,

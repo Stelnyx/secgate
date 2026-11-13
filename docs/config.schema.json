@@ -76,6 +76,16 @@
       "description": "Path to custom Semgrep rules directory or config file. Passed as --config=<path> in addition to --config=auto. Relative paths are resolved from the scan target.",
       "default": null,
       "examples": ["./rules/", ".semgrep/"]
+    },
+    "requireScanners": {
+      "type": "array",
+      "description": "Scanners that must run. If any listed scanner is skipped (not installed, disabled, not applicable) or errors, SecGate exits 2. The --require CLI flag overrides this list. A value that is not an array, or an unknown name, is an error (exit 2).",
+      "items": {
+        "type": "string",
+        "enum": ["semgrep", "gitleaks", "npm", "osv", "osv-scanner", "trivy"]
+      },
+      "default": [],
+      "examples": [["semgrep", "gitleaks"], ["semgrep", "gitleaks", "osv", "trivy"]]
     }
   }
 }

@@ -54,7 +54,8 @@ const {
 const {
   normalizeSeverity,
   matchPattern,
-  matchesAny
+  matchesAny,
+  toolExists
 } = await import(`${libDir}/utils.mjs`);
 
 const {
@@ -177,6 +178,38 @@ test("utils: matchPattern rejects patterns >256 chars to prevent ReDoS", () => {
 test("utils: matchesAny returns true when any pattern matches", () => {
   assert(matchesAny(["foo", "bar-*"], "bar-baz"), "wildcard in list");
   assert(!matchesAny(["foo", "bar-*"], "qux"), "no match in list");
+});
+
+test("utils: toolExists walks PATH without shelling out to `which`", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "secgate-path-"));
+  try {
+    const exe = path.join(dir, "fake-scanner");
+    fs.writeFileSync(exe, "#!/bin/sh\nexit 0\n");
+    fs.chmodSync(exe, 0o755);
+    fs.writeFileSync(path.join(dir, "not-executable"), "data");
+    fs.mkdirSync(path.join(dir, "a-directory"));
+    // PATH holds only `dir`: no `which` binary is reachable.
+    const env = { PATH: dir };
+    assertEq(toolExists("fake-scanner", env, "linux"), true, "executable found");
+    assertEq(toolExists("missing-scanner", env, "linux"), false, "missing tool");
+    assertEq(toolExists("not-executable", env, "linux"), false, "non-executable file");
+    assertEq(toolExists("a-directory", env, "linux"), false, "directory is not a tool");
+    assertEq(toolExists("fake-scanner", { PATH: "" }, "linux"), false, "empty PATH");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("utils: toolExists honours PATHEXT on win32", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "secgate-pathext-"));
+  try {
+    fs.writeFileSync(path.join(dir, "trivy.EXE"), "");
+    const env = { Path: dir, PATHEXT: ".COM;.EXE;.BAT;.CMD" };
+    assertEq(toolExists("trivy", env, "win32"), true, "trivy.EXE found via PATHEXT");
+    assertEq(toolExists("semgrep", env, "win32"), false, "semgrep missing");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 /* ────────────────────────────────────────────────────────────────────────────
