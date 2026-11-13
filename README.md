@@ -676,7 +676,7 @@ SecGate is the open-source input layer for a broader security workflow. The **co
 
 ## Tiers (planned)
 
-> **Status:** today's CLI is MIT, single tier — `npx @stelnyx/secgate .` runs the full scan, no flags, no gates. The table below is the planned tier model that aligns SecGate with [LuxScope](https://github.com/Stelnyx/LuxScope) and [LuxFaber](https://github.com/Stelnyx/LuxFaber) — same engine at every tier, paid tiers add presentation, persistence, and governance. **`recon` ships today.** `standard` / `enterprise` arrive when the hosted-link service lands.
+> **Status:** today's CLI is MIT, single tier — `npx @stelnyx/secgate .` runs the full scan, no flags, no gates. The table below is the planned tier model that aligns SecGate with LuxScope and LuxFaber ([stelnyx.com](https://stelnyx.com)) — same engine at every tier, paid tiers add presentation, persistence, and governance. **`recon` ships today.** `standard` / `enterprise` arrive when the hosted-link service lands.
 
 | Tier | Scanners | Findings | HTML report | Hosted shareable link | Branded cover | Trend storage |
 |---|---|---|---|---|---|---|

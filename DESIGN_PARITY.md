@@ -1,12 +1,8 @@
-# Design parity with sister products
+# Design parity
 
-**Sisters:**
-- [`luxfaber`](https://github.com/Stelnyx/LuxFaber) (~/code/Stelnyx/luxfaber)
-- [`lucen`](https://github.com/Stelnyx/lucen) (~/code/Stelnyx/lucen)
+SecGate shares its visual identity with the other Stelnyx products. **Any change to the shared shell, theme, brand block, or theme toggle must keep the report consistent with the shared theme package.** Drift makes the product family feel inconsistent.
 
-SecGate, Luxfaber, and Lucen share visual identity. **Any change to the shared shell, theme, brand block, or theme toggle MUST be mirrored in all three repos.** Drift kills the "same product family" feel and forces buyers to re-learn the chrome.
-
-The full token + anatomy spec is maintained in **[luxfaber/DESIGN_PARITY.md](https://github.com/Stelnyx/LuxFaber/blob/main/DESIGN_PARITY.md)** — that document is the authoritative reference for tokens, sidebar nav, brand block, theme button, export row, and score band thresholds. This file documents only SecGate-specific deviations and where to look.
+The shared tokens ship in the public npm package [`@stelnyx/report-theme`](https://www.npmjs.com/package/@stelnyx/report-theme). That package is the reference for tokens, sidebar nav, brand block, theme button, export row, and score band thresholds. This file documents only SecGate-specific deviations and where to look.
 
 ## Shared design tokens (summary)
 
@@ -30,12 +26,12 @@ Score bands: `STRONG ≥85`, `GOOD ≥70`, `MIXED ≥50`, `WEAK <50`.
 |------|-------|
 | Shell builder | `lib/report.mjs` → `renderHtml(rep, repoName)` |
 | Shell CSS | inline in `renderHtml` (single `<style>` block) |
-| Class prefix | `sg-` (avoids collision with `lf-` / `lucen-`) |
+| Class prefix | `sg-` (avoids collision with other products' prefixes) |
 | Theme toggle | `#sg-theme-toggle` (script inline at bottom of body) |
 | Theme storage key | `sg-theme` |
 | Favicon | 🛡 inline SVG |
 | Branding type | none — derived from `rep.securityScore`, `rep.target`, `rep.timestamp`, `rep.mode` |
-| Brand block extras | extra `PASS`/`FAIL` chip next to band pill (SecGate is a CI gate; luxfaber/lucen don't have a binary pass concept) |
+| Brand block extras | extra `PASS`/`FAIL` chip next to band pill (SecGate is a CI gate; the other products don't have a binary pass concept) |
 
 ## Sections
 
@@ -50,6 +46,6 @@ Score bands: `STRONG ≥85`, `GOOD ≥70`, `MIXED ≥50`, `WEAK <50`.
 
 ## Rules
 
-Same as luxfaber/lucen — touching shell, theme button, brand block, score pill, or tokens means **editing all three repos in the same change**. SecGate is a single `.mjs` file with no build step, so the cost of mirroring is one Edit; no excuse to defer.
+Touching shell, theme button, brand block, score pill, or tokens means **keeping SecGate aligned with the shared theme in the same change**. SecGate is a single `.mjs` file with no build step, so the cost of mirroring is one Edit; no excuse to defer.
 
 If you're tempted to ship one without the others "and circle back", don't. The drift compounds.

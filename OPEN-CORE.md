@@ -16,7 +16,7 @@ These capabilities are shipped today and will not move behind a paywall:
 - **Finding normalization** — unified severity model, deduplication, `addFinding()` pipeline
 - **SARIF 2.1.0 output** — standard format, no lock-in
 - **JSON report** — full schema, machine-readable, no proprietary fields
-- **Self-contained HTML report** — per-scanner tabs, sidebar shell shared with luxfaber + lucen, Midnight/Dawn Blossom theme toggle, zero external assets
+- **Self-contained HTML report** — per-scanner tabs, sidebar shell shared with the other Stelnyx products, Midnight/Dawn Blossom theme toggle, zero external assets
 - **Confidence profiles** — `curated` (default) / `strict` HTML report demotion logic; built-in mute list for known-noisy patterns; collapsed Informational + Suppressed details blocks
 - **Baseline / ratcheting** — `--update-baseline`, `--baseline`, suppress known findings
 - **Inline suppressions** — `secgate:ignore` comments, audit-logged
