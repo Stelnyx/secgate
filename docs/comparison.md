@@ -73,7 +73,7 @@ Every other tool on this list either:
 SecGate is the only option that:
 
 1. **Bundles five best-in-class OSS scanners** behind one CLI.
-2. **Requires zero config** — `npx @stelnyx/secgate .` runs everything.
+2. **Requires zero config** — `npx @stelnyx/secgate .` runs npm audit with no extra installs, plus Semgrep, Gitleaks, osv-scanner and Trivy when they are on `PATH`. Missing scanners are reported as not run (`n/a`), and the run exits `2` when none ran.
 3. **Ships no telemetry, no account, no dashboard** — output is local files.
 4. **Stays MIT-licensed and free forever** — no seat caps, no commercial restrictions.
 5. **Produces one normalized report** — one JSON schema, one HTML file, across all scanners.

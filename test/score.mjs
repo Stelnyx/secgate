@@ -169,6 +169,15 @@ test("toolScores: tool floor at 0 (multiple CRITICAL)", () => {
   assertEq(ts.semgrep, 0, "tool score floor = 0");
 });
 
+test("toolScores: tools that did not run score null, never 100", () => {
+  const findings = [{ severity: "HIGH", tool: "gitleaks" }];
+  const ts = computeToolScores(findings, ["semgrep", "gitleaks", "npm", "osv", "trivy"], ["semgrep", "osv"]);
+  assertEq(ts.semgrep,  null, "semgrep not run → null");
+  assertEq(ts.osv,      null, "osv not run → null");
+  assertEq(ts.gitleaks, 90,   "gitleaks ran → scored");
+  assertEq(ts.npm,      100,  "npm ran clean → 100");
+});
+
 console.log("------------------------");
 console.log(`${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);

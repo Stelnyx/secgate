@@ -141,8 +141,8 @@ test("no-lockfile finding does not cause FAIL status (MEDIUM only)", () => {
 
   const { report } = runWithStubs(d, { npm: ENOLOCK_PAYLOAD });
 
-  // MEDIUM alone should not flip status to FAIL
-  assertEq(report.status, "PASS", "MEDIUM finding alone should leave status PASS");
+  // MEDIUM alone does not FAIL; npm audit could not run, so it is not a PASS.
+  assertEq(report.status, "INCOMPLETE", "no lockfile: npm audit did not run, so INCOMPLETE, not FAIL or PASS");
 
   fs.rmSync(d, { recursive: true, force: true });
 });

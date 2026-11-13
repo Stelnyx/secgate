@@ -26,11 +26,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + [Semantic Ver
   separate job with no token and no lifecycle scripts.
 
 ### Changed
+- **Breaking: exit code 2 on partial coverage.** A scan where a scanner that
+  applies did not run (not installed, timed out, or failed in a way SecGate
+  detects) now reports `INCOMPLETE` and exits `2` instead of `PASS` with exit
+  `0`. Blocking findings from the scanners that ran still give `FAIL` (exit
+  `1`). CI steps that run SecGate on a runner without all external scanners
+  installed will go from exit `0` to exit `2`.
+- Projects with only a `yarn.lock` or `pnpm-lock.yaml` (no `package-lock.json`)
+  now exit `2`: npm audit cannot run without an npm lockfile, so the scan is
+  `INCOMPLETE`.
+- Trivy counts as ran only when its filesystem scan ran and its image scan did
+  not fail. A failed base-image pull or a timed-out filesystem scan is a gap.
+- No scanner ran, or a scanner named in `--require` / `requireScanners` did
+  not run: exit `2`. Scanners that did not run are shown as `n/a`, not
+  `100 / 100`.
+- To skip a scanner on purpose, set `"scanners": { "<name>": false }` in
+  `.secgate.config.json`; a disabled scanner is not a gap.
 - **Docs**: removed the npm provenance badge and the provenance claims that
   were false for `0.2.14` (published without provenance, tag or GitHub
   Release) from `README.md`, `SECURITY.md` and `docs/index.html`. The docs
   page no longer hard-codes a version. `CONTRIBUTING.md` now describes one
   tag-driven release flow.
+
+### Added
+- `--require <tools>` (also `--require=<tools>`) and the `requireScanners`
+  config key.
 
 ## [0.2.14] - 2026-07-10
 
