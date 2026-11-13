@@ -49,7 +49,7 @@
     "access": "public"
   },
   "scripts": {
-    "test": "node test/engine.mjs && node test/score.mjs && node test/walk.mjs && SECGATE_INTERNAL_TEST=1 node test/smoke.mjs && node test/schema.mjs && node test/sarif.mjs && node test/trivy-image.mjs && node test/no-lockfile.mjs && node test/config.mjs && node test/baseline.mjs && node test/suppression.mjs && node test/confidence.mjs && node test/timeout.mjs && node test/determinism.mjs && node test/golden-secgate.mjs",
+    "test": "node test/engine.mjs && node test/score.mjs && node test/walk.mjs && SECGATE_INTERNAL_TEST=1 node test/smoke.mjs && node test/schema.mjs && node test/sarif.mjs && node test/trivy-image.mjs && node test/no-lockfile.mjs && node test/config.mjs && node test/baseline.mjs && node test/suppression.mjs && node test/confidence.mjs && node test/timeout.mjs && node test/determinism.mjs && node test/golden-secgate.mjs && node test/action-exit.mjs",
     "test:smoke": "SECGATE_INTERNAL_TEST=1 node test/smoke.mjs",
     "test:schema": "node test/schema.mjs",
     "test:sarif": "node test/sarif.mjs",
@@ -63,6 +63,7 @@
     "test:score": "node test/score.mjs",
     "test:determinism": "node test/determinism.mjs",
     "test:golden": "node test/golden-secgate.mjs",
+    "test:action": "node test/action-exit.mjs",
     "test:coverage": "c8 --reporter=text --reporter=lcov npm test",
     "lint": "eslint .",
     "scan": "node secgate.js .",
