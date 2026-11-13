@@ -256,9 +256,16 @@ exits with a clear message unless `--allow-workspace` is supplied.
 | `1`  | FAIL — CRITICAL or HIGH findings present           |
 | `2`  | Invalid target or CLI error (including an empty or unknown `--require` list, or a `requireScanners` value that is not an array or names an unknown scanner); `no scanners available` (none of the five scanners ran); a scanner listed in `--require` / `requireScanners` did not run; or INCOMPLETE (no blocking findings, but a scanner that applies did not run). `--update-baseline` exits `2` without writing a baseline when no scanner ran or a required one did not |
 
-A scanner "applies" unless it is disabled in the config, or it has nothing to
-scan (npm audit with no `package.json`). When a scanner that applies is missing,
-errors or times out, SecGate never reports PASS. Blocking findings from the
+A scanner "applies" unless it is disabled in the config (`"scanners": { "<name>": false }`,
+the explicit opt-out), or it has nothing to scan (npm audit with no
+`package.json`). When a scanner that applies is not installed, times out, or
+fails in a way SecGate detects (unparsable output, a failed Trivy image pull),
+SecGate does not report PASS. Trivy counts as ran only when its filesystem scan
+ran and its image scan did not fail; an image scan with no Dockerfile or no
+`FROM` image to scan is not applicable and is not a gap. Known gap
+([#82](https://github.com/Stelnyx/SecGate/issues/82)): Gitleaks and osv-scanner
+runs that fail but print nothing on stdout are still counted as clean.
+Blocking findings from the
 scanners that ran still give FAIL (exit `1`); otherwise the status is
 `INCOMPLETE` (exit `2`). SecGate prints `WARNING: N of 5 scanners ran` on stderr
 with an install hint per missing scanner, and reports the missing ones as `n/a`
@@ -376,7 +383,9 @@ Suppressed findings are excluded from counters. The report's `suppressions` sect
 # .github/workflows/secgate.yml
 - name: Run SecGate
   run: npx @stelnyx/secgate .
-  # exits 1 on CRITICAL or HIGH findings — blocks the pipeline
+  # exit 1 on CRITICAL or HIGH findings; exit 2 when no scanner ran, a
+  # required scanner did not run, or a scanner that applies did not run
+  # (INCOMPLETE). Both block the pipeline. See "Exit codes" above.
 ```
 
 ### Non-blocking (report only)

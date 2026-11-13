@@ -241,6 +241,75 @@ test("scanners disabled in config are not a gap → PASS, exit 0", () => {
   }
 });
 
+/* ── Trivy: fs and image sub-scans must each succeed (#73) ── */
+
+// Only Trivy is in play: the other scanners are disabled in config (not a
+// gap) and there is no package.json (npm audit not applicable).
+function makeTrivyTarget({ dockerfile = true } = {}) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "secgate-trivy-"));
+  fs.writeFileSync(path.join(dir, "index.js"), "console.log('hi');\n");
+  if (dockerfile) fs.writeFileSync(path.join(dir, "Dockerfile"), "FROM node:20-slim\n");
+  fs.writeFileSync(
+    path.join(dir, ".secgate.config.json"),
+    JSON.stringify({ scanners: { semgrep: false, gitleaks: false, osv: false } })
+  );
+  return dir;
+}
+
+const TRIVY_CLEAN = `echo '{"Results":[]}'`;
+function trivyStub({ fs: fsCmd = TRIVY_CLEAN, image = TRIVY_CLEAN } = {}) {
+  return `if [ "$1" = "image" ]; then\n${image}\nelse\n${fsCmd}\nfi`;
+}
+
+function runTrivyCase(stub, targetOpts) {
+  const binDir = makeBinDir({ trivy: stub });
+  const target = makeTrivyTarget(targetOpts);
+  try {
+    return runIsolated(binDir, target);
+  } finally {
+    fs.rmSync(binDir, { recursive: true, force: true });
+    fs.rmSync(target, { recursive: true, force: true });
+  }
+}
+
+test("trivy fs and image both clean → PASS, exit 0 (control)", () => {
+  const r = runTrivyCase(trivyStub());
+  assertEq(r.code, 0, "exit");
+  assertEq(r.rep.status, "PASS", "status");
+  assertEq(r.rep.tools.trivyImage, "clean", "image scan ran");
+});
+
+test("trivy fs clean, no Dockerfile (image not applicable) → PASS, exit 0", () => {
+  const r = runTrivyCase(trivyStub(), { dockerfile: false });
+  assertEq(r.code, 0, "exit");
+  assertEq(r.rep.status, "PASS", "status");
+  assertEq(r.rep.tools.trivyImage, "skipped", "image scan not applicable");
+});
+
+test("trivy image pull error while fs is clean → INCOMPLETE, exit 2", () => {
+  const r = runTrivyCase(trivyStub({ image: "echo 'FATAL unable to pull image' >&2; exit 1" }));
+  assertEq(r.code, 2, "exit");
+  assertEq(r.rep.tools.trivy, "clean", "fs scan ran");
+  assertEq(r.rep.tools.trivyImage, "error", "image scan errored");
+  assertEq(r.rep.status, "INCOMPLETE", "status");
+  assertEq(r.rep.coverage.ran.includes("trivy"), false, "trivy not counted as ran");
+  assertContains(r.stderr, "Trivy: image scan error", "coverage warning names the image scan");
+  assertNotContains(r.stdout, "STATUS: PASS", "console status");
+});
+
+// The real kill fires after 180 s; the stub fails in a way the timeout
+// classifier (lib/utils.mjs isTimeoutError) reads as a timeout.
+test("trivy fs timeout while image is clean → INCOMPLETE, exit 2", () => {
+  const r = runTrivyCase(trivyStub({ fs: "echo 'scan timed out' >&2; exit 1" }));
+  assertEq(r.code, 2, "exit");
+  assertEq(r.rep.tools.trivy, "error", "fs scan errored");
+  assertContains(r.rep.toolSkipReason.trivy || "", "timed out after", "fs timeout reason");
+  assertEq(r.rep.tools.trivyImage, "clean", "image scan ran");
+  assertEq(r.rep.status, "INCOMPLETE", "status");
+  assertEq(r.rep.coverage.ran.includes("trivy"), false, "trivy not counted as ran");
+  assertNotContains(r.stdout, "STATUS: PASS", "console status");
+});
+
 test("--require semgrep without semgrep on PATH → exit 2", () => {
   const binDir = makeBinDir({ gitleaks: "echo '[]'" });
   const target = makeEvalTarget();

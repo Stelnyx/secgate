@@ -24,6 +24,7 @@ import {
   summarize,
   resolveStatus,
   computeCoverage,
+  coverageSkipReason,
   normalizeScannerNames,
   applyPathStripping,
   renderHtml,
@@ -463,14 +464,15 @@ const coverageExit2   = noScannersRan || missingRequired.length > 0;
 // is nothing for it to scan. Any other skip (not installed, error, timeout,
 // no lockfile) means a scanner that should have run did not.
 const NOT_A_GAP       = new Set(["disabled in config", "no package.json in target"]);
-const coverageGaps    = coverage.skipped.filter(t => !NOT_A_GAP.has(toolSkipReason[t]));
+const skipReasonOf    = t => coverageSkipReason(t, toolStatus, toolSkipReason);
+const coverageGaps    = coverage.skipped.filter(t => !NOT_A_GAP.has(skipReasonOf(t)));
 const coverageLine    = `${coverage.ran.length} of ${coverage.total} scanners ran`;
 
 function printCoverageWarning() {
   if (!coverage.skipped.length) return;
   console.error(`\nWARNING: ${coverageLine}. Results cover only the scanners that ran.`);
   for (const key of coverage.skipped) {
-    const reason = toolSkipReason[key] || toolStatus[key];
+    const reason = skipReasonOf(key);
     const hint = reason === "not installed" ? ` — install: ${INSTALL_HINTS[key]}` : "";
     console.error(`  - ${SCANNER_LABEL[key]}: ${reason}${hint}`);
   }
@@ -483,7 +485,7 @@ function exitIfCoverageFails() {
   }
   if (missingRequired.length) {
     const list = missingRequired
-      .map(t => `${t} (${toolSkipReason[t] || toolStatus[t]})`)
+      .map(t => `${t} (${skipReasonOf(t)})`)
       .join(", ");
     console.error(`\nSecGate: required scanner(s) did not run: ${list} (exit 2).`);
     process.exit(2);
@@ -579,7 +581,7 @@ for (const key of SCANNERS) {
   const label = SCANNER_LABEL[key];
   const ts = report.toolScores[key];
   if (ts == null) {
-    const reason = toolSkipReason[key] || toolStatus[key];
+    const reason = skipReasonOf(key);
     console.log(`  ${label.padEnd(12)} n/a       not run (${reason})`);
   } else {
     console.log(`  ${label.padEnd(12)} ${scoreColor(ts, `${ts} / 100`)}   ${scoreColor(ts, scoreBar(ts))}`);
