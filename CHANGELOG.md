@@ -10,8 +10,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + [Semantic Ver
 - **Bundled GitHub Action**: the step now fails when the CLI exits 2
   (INCOMPLETE, no scanners ran, or a `--require`d scanner did not run). The
   `fail-on` filter used to run whenever a report file existed and turned that
-  exit 2 into exit 0. Other exit codes above 1 (for example 127 when `npx`
-  fails) are kept as well. New optional `require` input passes `--require` to
+  exit 2 into exit 0. Other exit codes above 1 (for example 127 command not
+  found) are kept as well. The step removes an old `secgate-v7-report.json`
+  before running the CLI, and the `fail-on` levels are allowlisted and passed
+  to `node` as an argument instead of being interpolated into its source; an
+  unknown level fails the step with exit 2. New optional `require` input passes `--require` to
   the CLI. The step also no longer needs bash 4 (`${var,,}`), so it runs on
   macOS' bash 3.2. Covered by `test/action-exit.mjs`.
 - **Release pipeline**: npm publish now runs inside `release.yml`, after the

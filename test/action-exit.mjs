@@ -5,7 +5,7 @@
 // CLI exit 2 (INCOMPLETE, no scanners, missing --require'd scanner) into exit 0.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync, existsSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -31,6 +31,8 @@ function extractRunScript(yaml) {
 }
 
 const SCRIPT = extractRunScript(ACTION);
+// Guards the extractor's indent assumption: a wrong strip would mangle line 1.
+assert.ok(SCRIPT.startsWith("ARGS="), `extracted script must start with ARGS=, got ${JSON.stringify(SCRIPT.slice(0, 20))}`);
 
 // Stub CLI: records argv, writes an optional report into the cwd, exits with STUB_EXIT.
 const STUB = `
@@ -45,7 +47,7 @@ writeFileSync(join(tmp, "stub.mjs"), STUB);
 writeFileSync(join(tmp, "step.sh"), SCRIPT);
 
 let n = 0;
-function runStep({ exit, report, failOn = "critical,high", require = "", format = "json,html", stale }) {
+function runStep({ exit, report, failOn = "critical,high", require = "", format = "json,html", stale, env = {}, secgatePath = join(tmp, "stub.mjs"), path = process.env.PATH }) {
   const work = join(tmp, `case${++n}`);
   spawnSync("mkdir", ["-p", work]);
   const out = join(work, "github_output");
@@ -57,20 +59,22 @@ function runStep({ exit, report, failOn = "critical,high", require = "", format 
     cwd: work,
     encoding: "utf8",
     env: {
-      PATH: process.env.PATH,
+      PATH: path,
       GITHUB_OUTPUT: out,
       SECGATE_TARGET: ".",
       SECGATE_APPLY: "false",
       SECGATE_FORMAT: format,
       SECGATE_FAIL_ON: failOn,
       SECGATE_REQUIRE: require,
-      SECGATE_PATH: join(tmp, "stub.mjs"),
+      SECGATE_PATH: secgatePath,
       STUB_EXIT: String(exit),
       STUB_ARGS_FILE: argsFile,
-      STUB_REPORT: report ? JSON.stringify(report) : ""
+      STUB_REPORT: report ? JSON.stringify(report) : "",
+      ...env
     }
   });
   return {
+    work,
     status: r.status,
     stdout: r.stdout,
     stderr: r.stderr,
@@ -88,6 +92,7 @@ try {
     const r = runStep({ exit: 2, report: clean });
     assert.equal(r.status, 2, `CLI exit 2 + clean report must fail the step with 2, got ${r.status}\n${r.stdout}${r.stderr}`);
     assert.match(r.stdout, /::error::SecGate exited with code 2/);
+    assert.match(r.stdout, /, or a usage\/config error\)/, "exit 2 message mentions usage/config errors");
     assert.match(r.output, /report-path=secgate-v7-report\.json/, "outputs are still written so upload steps work");
     console.log("  ok  CLI exit 2 with a clean report → step exits 2");
   }
@@ -112,6 +117,54 @@ try {
     assert.equal(r.status, code, `CLI exit ${code} with a stale clean report must fail with ${code}, got ${r.status}`);
   }
   console.log("  ok  CLI crash codes (127, 137) with a stale report → step keeps the code");
+
+  // A stale clean report must not turn a CLI that died with exit 1 (npx registry
+  // error, uncaught exception) into a pass: the step removes it before the CLI runs.
+  {
+    const r = runStep({ exit: 1, stale: clean });
+    assert.equal(r.status, 1, `CLI exit 1 + stale clean report must fail with 1, got ${r.status}\n${r.stdout}${r.stderr}`);
+    console.log("  ok  CLI exit 1 with a stale clean report → step exits 1");
+  }
+  // A job-level env SECGATE_EXIT must not leak into the step.
+  {
+    const r = runStep({ exit: 0, report: clean, env: { SECGATE_EXIT: "5" } });
+    assert.equal(r.status, 0, `inherited SECGATE_EXIT=5 must be ignored, got ${r.status}\n${r.stdout}${r.stderr}`);
+    console.log("  ok  inherited SECGATE_EXIT=5 with CLI exit 0 → step exits 0");
+  }
+
+  // fail-on is data, never JavaScript source: injection attempt, allowlist, empty items.
+  {
+    const r = runStep({ exit: 0, report: clean, failOn: "x'+require('child_process').exec('touch\\x20pwned')+'" });
+    assert.ok(!existsSync(join(r.work, "pwned")), "fail-on payload must not execute");
+    assert.equal(r.status, 2, `invalid fail-on must fail the step with 2, got ${r.status}\n${r.stdout}${r.stderr}`);
+    assert.match(r.stdout, /::error::.*fail-on/);
+    const bad = runStep({ exit: 0, report: clean, failOn: "critical,severe" });
+    assert.equal(bad.status, 2, "unknown level is rejected with exit 2");
+    assert.match(bad.stdout, /::error::/);
+    console.log("  ok  invalid fail-on level → ::error:: and exit 2, nothing executed");
+  }
+  {
+    const r = runStep({ exit: 1, report: oneHigh, failOn: " High , ,medium," });
+    assert.equal(r.status, 1, `spaces and mixed case are accepted and empty items skipped, got ${r.status}\n${r.stdout}${r.stderr}`);
+    assert.match(r.stdout, /::error::SecGate found 1 HIGH finding/);
+    const ok = runStep({ exit: 0, report: clean, failOn: "critical,high," });
+    assert.equal(ok.status, 0, `trailing comma is skipped, got ${ok.status}\n${ok.stdout}${ok.stderr}`);
+    console.log("  ok  empty fail-on items are skipped; case and spaces tolerated");
+  }
+
+  // npx branch (SECGATE_PATH empty): published package is run with @latest.
+  {
+    const bin = join(tmp, "bin");
+    mkdirSync(bin);
+    const js = 'require("fs").writeFileSync(process.env.STUB_ARGS_FILE, JSON.stringify(process.argv.slice(1)))';
+    writeFileSync(join(bin, "npx"), `#!/bin/sh\nnode -e '${js}' -- "$@"\nexit "$STUB_EXIT"\n`, { mode: 0o755 });
+    const r = runStep({ exit: 1, secgatePath: "", path: `${bin}:${process.env.PATH}` });
+    assert.deepEqual(r.args?.slice(0, 2), ["--yes", "@stelnyx/secgate@latest"], `npx called with the registry package, got ${JSON.stringify(r.args)}`);
+    assert.equal(r.status, 1, `npx exit 1 with no report → 1, got ${r.status}`);
+    const crash = runStep({ exit: 127, secgatePath: "", path: `${bin}:${process.env.PATH}` });
+    assert.equal(crash.status, 127, "npx exit 127 is kept");
+    console.log("  ok  npx branch: runs @stelnyx/secgate@latest and keeps its exit code");
+  }
 
   // Existing behavior stays.
   {
