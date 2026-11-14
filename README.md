@@ -281,6 +281,9 @@ required scanner that the config disables exits `2`. SecGate also prints
 `NOTE: disabled by the scanned repo's .secgate.config.json: ...` after the
 status line, and lists the scanners in `disabledByConfig` in the JSON report.
 In a workflow that scans pull requests, use `with: require: semgrep,gitleaks`.
+`--require` guarantees that the scanners ran, not that their findings block:
+the scanned repo's config can still change `failOn`, `ignore` and
+`excludePaths` (#91).
 
 ---
 
