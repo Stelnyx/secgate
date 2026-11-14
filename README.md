@@ -272,6 +272,16 @@ with an install hint per missing scanner, and reports the missing ones as `n/a`
 `requireScanners` (also `--require=semgrep,...`) additionally exit `2` when a
 listed scanner does not run, even if there are blocking findings.
 
+**Untrusted pull requests.** `.secgate.config.json` is read from the scanned
+repository, so a pull request can set `scanners.<name>: false` or its own
+`requireScanners`, and a scan with nothing required still ends `PASS` (a
+scanner disabled in config is not a gap). Only the `--require` flag (the
+action's `require` input) set in your workflow is out of the PR's reach: a
+required scanner that the config disables exits `2`. SecGate also prints
+`NOTE: disabled by the scanned repo's .secgate.config.json: ...` after the
+status line, and lists the scanners in `disabledByConfig` in the JSON report.
+In a workflow that scans pull requests, use `with: require: semgrep,gitleaks`.
+
 ---
 
 ## Security — `--apply` in untrusted repos
@@ -497,6 +507,7 @@ secgate . --format sarif             # also writes JSON + HTML
 ### SARIF structure
 
 - One `runs[]` entry per scanner: `semgrep`, `gitleaks`, `npm`, `osv`, `trivy`, `trivyImage` (6 total).
+- A run has `properties.disabledByConfig: true` when the scanned repo's config turned that scanner off (`trivyImage` follows `trivy`).
 - Each finding maps to a `result` with `ruleId = signature`, `level` derived from severity, and `locations[].physicalLocation` when file/line data is present.
 - `properties["security-severity"]` carries a CVSS-style score for GitHub's sort order: `CRITICAL = 9.5`, `HIGH = 7.5`, `MEDIUM = 5`, `LOW = 2`, `UNKNOWN = 0`.
 
@@ -544,6 +555,7 @@ Each run writes:
     "skipped": ["semgrep", "osv", "trivy"],
     "total": 5
   },
+  "disabledByConfig": ["semgrep"],
   "summary": {
     "critical": 0,
     "high": 0,

@@ -25,6 +25,7 @@ import {
   resolveStatus,
   computeCoverage,
   coverageSkipReason,
+  disabledByConfig,
   normalizeScannerNames,
   applyPathStripping,
   renderHtml,
@@ -103,7 +104,8 @@ Options:
                       gitleaks,npm,osv,trivy); also --require=<tools>.
                       Exit 2 if any did not run, or if the list is empty
                       or names an unknown scanner. Overrides
-                      requireScanners in the config file.
+                      requireScanners in the config file. The scanned
+                      repo's config cannot change this flag.
   --debug             Print raw scanner output
   --profile <name>    Confidence profile: 'curated' (default; demotes
                       noisy rules + base-image OS CVEs + stale CVEs to
@@ -466,6 +468,7 @@ const coverageExit2   = noScannersRan || missingRequired.length > 0;
 const NOT_A_GAP       = new Set(["disabled in config", "no package.json in target"]);
 const skipReasonOf    = t => coverageSkipReason(t, toolStatus, toolSkipReason);
 const coverageGaps    = coverage.skipped.filter(t => !NOT_A_GAP.has(skipReasonOf(t)));
+const configDisabled  = disabledByConfig(toolSkipReason);
 const coverageLine    = `${coverage.ran.length} of ${coverage.total} scanners ran`;
 
 function printCoverageWarning() {
@@ -535,6 +538,7 @@ report.remediation   = remediate(activeFindings, {
 });
 report.status        = resolveStatus(activeFindings, config.failOn, BASELINE_MODE);
 report.coverage      = coverage;
+report.disabledByConfig = configDisabled;
 
 // A scan that could not look is not a pass: exit 2 and say so in the report.
 if (coverageExit2) report.status = "INCOMPLETE";
@@ -590,6 +594,9 @@ for (const key of SCANNERS) {
 
 console.log("\n────────────────────────────────");
 console.log(coverage.skipped.length ? `STATUS: ${report.status} (${coverageLine})` : `STATUS: ${report.status}`);
+if (configDisabled.length) {
+  console.log(`NOTE: disabled by the scanned repo's .secgate.config.json: ${configDisabled.join(", ")}. Set --require in the workflow so a pull request cannot turn scanners off.`);
+}
 console.log("RISK SCORE:", report.intelligence.riskScore);
 console.log("CONFIDENCE:", report.remediation.confidence + "%");
 

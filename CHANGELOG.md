@@ -7,6 +7,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + [Semantic Ver
 ## [Unreleased]
 
 ### Fixed
+- **Scanners disabled by the scanned repo's config are visible** (#84). The
+  console prints a `NOTE` after the status line, the JSON report has a
+  `disabledByConfig` list, and SARIF runs of those scanners carry
+  `properties.disabledByConfig`. `--require` already exits 2 when the config
+  disables a required scanner (covered by a new smoke test); the README and
+  threat model now say that `--require` (the action's `require` input) is the
+  control a pull request cannot change. A scan with nothing required still
+  passes.
 - **Bundled GitHub Action**: the step now fails when the CLI exits 2
   (INCOMPLETE, no scanners ran, or a `--require`d scanner did not run). The
   `fail-on` filter used to run whenever a report file existed and turned that
