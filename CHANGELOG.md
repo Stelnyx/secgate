@@ -244,7 +244,7 @@ confidence-profile work and the timeout/network-disclosure changes — ships in
 - **19 new unit tests** in `test/confidence.mjs` covering all demotion
   paths (license, image-scan via tool/scanMode/signature, stale-CVE year
   arithmetic, profile bypass).
-- **Sidebar shell parity with luxfaber + lucen.** SecGate report now
+- **Sidebar shell parity with sister products.** SecGate report now
   renders in the unified Midnight Blossom / Dawn Blossom shell shared
   across the three Stelnyx products. 240px sticky sidebar with
   brand block + score + band pill + PASS/FAIL chip + scroll-spy nav.
@@ -288,7 +288,7 @@ confidence-profile work and the timeout/network-disclosure changes — ships in
   Thresholds; reflects v0.2.6 behavior.
 - `docs/config.schema.json`: new `profile` enum field with description.
 - `DESIGN_PARITY.md`: SecGate added as third sister product alongside
-  luxfaber + lucen.
+  sister products.
 
 ---
 
