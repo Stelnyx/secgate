@@ -400,6 +400,25 @@ test("trivy fs timeout while image is clean → INCOMPLETE, exit 2", () => {
   assertNotContains(r.stdout, "STATUS: PASS", "console status");
 });
 
+// SecGate passes --exit-code 0, so a non-zero exit is a failure even when
+// Trivy also printed valid JSON.
+test("trivy fs exit 1 with valid JSON → error, not clean (#82)", () => {
+  const r = runTrivyCase(trivyStub({ fs: `${TRIVY_CLEAN}; exit 1` }));
+  assertEq(r.rep.tools.trivy, "error", "fs status");
+  assertContains(r.rep.toolSkipReason.trivy || "", "exited with code 1", "fs reason");
+  assertEq(r.rep.status, "INCOMPLETE", "status");
+  assertEq(r.code, 2, "exit");
+});
+
+test("trivy image exit 1 with valid JSON → image error, not clean (#82)", () => {
+  const r = runTrivyCase(trivyStub({ image: `${TRIVY_CLEAN}; exit 1` }));
+  assertEq(r.rep.tools.trivyImage, "error", "image status");
+  assertContains(r.rep.toolSkipReason.trivyImage || "", "exited with code 1", "image reason");
+  assertEq(r.rep.coverage.ran.includes("trivy"), false, "trivy not counted as ran");
+  assertEq(r.rep.status, "INCOMPLETE", "status");
+  assertEq(r.code, 2, "exit");
+});
+
 /* ── A scanner that fails is an error, never clean (#82, #95) ── */
 
 function withStubs(stubs, fn, setup) {

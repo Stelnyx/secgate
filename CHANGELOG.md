@@ -30,8 +30,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + [Semantic Ver
   report, or with a code other than 0 and 1; osv-scanner exiting 1 with no
   output, or with a code other than 0, 1 and 128 (no package sources);
   Semgrep exiting 2 or above, or reporting an error at level `error` in its
-  JSON. Files Semgrep could not parse (level `warn`) still do not fail the
-  scan.
+  JSON; Trivy (fs and image) exiting with any code other than 0. SecGate now
+  passes `--exit-code 0` to Trivy, which overrides `TRIVY_EXIT_CODE` and a
+  `trivy.yaml` setting, so findings never change Trivy's exit code. Files
+  Semgrep could not parse (level `warn`) still do not fail the scan.
 - **README**: Semgrep downloads its rules from the Semgrep Registry, so it is
   listed as a network scanner (four of the five wrapped scanners need the
   internet, not three). Gitleaks scans git history only, not the working
