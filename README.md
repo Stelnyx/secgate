@@ -41,14 +41,16 @@ Full pipeline spec lives in [`docs/aggregation.md`](docs/aggregation.md).
 Every run now produces a **Security Score (0–100)** in addition to the binary PASS/FAIL gate. The score is deterministic: same findings → same score every time.
 
 ```
-Security Score: 62 / 100   ████████████░░░░░░░░  rule v1
+Security Score: 54 / 100   ███████████░░░░░░░░░  rule v1
 
-  Semgrep      97 / 100   ███████████████████░
-  Gitleaks     75 / 100   ███████████████░░░░░
+  Semgrep      100 / 100   ████████████████████
+  Gitleaks     100 / 100   ████████████████████
   npm audit    90 / 100   ██████████████████░░
-  osv-scanner 100 / 100   ████████████████████
-  Trivy        62 / 100   ████████████░░░░░░░░
+  osv-scanner  64 / 100   █████████████░░░░░░░
+  Trivy        100 / 100   ████████████████████
 ```
+
+Real output of `node secgate.js test/fixtures/vulnerable-deps`, run from the repository root at commit `edea720` on 2026-11-15 with Semgrep 1.157.0, Gitleaks 8.30.1, osv-scanner 2.3.5, Trivy 0.70.0 and npm 11.19.1. The fixture pins `lodash` 4.17.15. Scores change when the scanners or their rule and vulnerability databases change.
 
 Penalty per finding: CRITICAL −25 · HIGH −10 · MEDIUM −3 · LOW −1 · INFO/UNKNOWN 0. Floor: 0. Color thresholds: green ≥ 90, amber ≥ 70, red < 70. The binary gate (exit 1 on CRITICAL/HIGH) is unchanged. `securityScore` and `toolScores` are also written to `secgate-v7-report.json` for CI dashboards and trend tracking.
 
@@ -83,8 +85,8 @@ SecGate does not ship its own analysis engine. Every finding originates from one
 
 | Scanner       | Category                  | Notes                                                                 |
 |---------------|---------------------------|-----------------------------------------------------------------------|
-| **Semgrep**   | SAST (static code)        | OSS ruleset. 10+ languages. Extend via `customSemgrepRules`. Local.   |
-| **Gitleaks**  | Secrets & credentials     | Working tree + git history (when `.git/` present). Secrets redacted. Local. |
+| **Semgrep**   | SAST (static code)        | OSS ruleset. 10+ languages. Extend via `customSemgrepRules`. **Downloads its rules from the Semgrep Registry (network).** |
+| **Gitleaks**  | Secrets & credentials     | Git history only: the committed changes of the repository that contains the target. Uncommitted files are not scanned, and a target outside a git repository is skipped. Secrets redacted. Local. |
 | **npm audit** | Node dependencies (SCA)   | Runs when `package.json` present. **Queries the npm registry advisory API (network).** |
 | **osv-scanner** | Polyglot SCA            | npm, PyPI, Go, Cargo, Maven, RubyGems, Packagist, NuGet, Pub. **Queries the OSV.dev API (network).** |
 | **Trivy**     | IaC + License + Image     | Terraform, Kubernetes, Dockerfile, CloudFormation. Base-image CVEs. **Downloads its vuln DB; pulls image layers for image scans (network).** |
@@ -95,17 +97,17 @@ Missing scanner binaries are **skipped gracefully** and noted in the report. No 
 
 ## Network access
 
-SecGate itself makes **no network calls** — no telemetry, no account, no phone-home, and the report is written to local files. But three of the five wrapped scanners need the internet to do their job:
+SecGate itself makes **no network calls** — no telemetry, no account, no phone-home, and the report is written to local files. But four of the five wrapped scanners need the internet to do their job:
 
 | Scanner | Network use |
 |---------|-------------|
-| Semgrep | None — runs its ruleset against your files. |
-| Gitleaks | None — scans your working tree and git history locally. |
+| Semgrep | Downloads its rules from the Semgrep Registry (`--config=auto`), then runs them against your files. |
+| Gitleaks | None — scans your git history locally. |
 | npm audit | Queries the npm registry's advisory API for your dependency tree. |
 | osv-scanner | Queries the OSV.dev API for advisories matching your dependency manifests. |
 | Trivy | Downloads/updates its vulnerability database; pulls image layers when scanning container images. |
 
-So "no telemetry" is exact; "fully air-gapped" is not — run SecGate offline and `npm audit`, `osv-scanner`, and `Trivy` will degrade or skip (which SecGate reports). On first run, `osv-scanner` and Trivy may download vulnerability databases; SecGate prints a one-line note before starting those scanners so the initial delay is not mistaken for a hang. A first-class offline mode (skip the network scanners, or point them at a local DB mirror) is tracked in the issue backlog.
+So "no telemetry" is exact; "fully air-gapped" is not — run SecGate offline and Semgrep, `npm audit`, `osv-scanner`, and `Trivy` will degrade or skip (which SecGate reports). On first run, `osv-scanner` and Trivy may download vulnerability databases; SecGate prints a one-line note before starting those scanners so the initial delay is not mistaken for a hang. A first-class offline mode (skip the network scanners, or point them at a local DB mirror) is tracked in the issue backlog.
 
 ---
 
