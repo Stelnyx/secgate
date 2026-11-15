@@ -67,6 +67,11 @@ function runWithSemgrepStub(scanDir, semgrepPayloadStr) {
   const stub = path.join(stubDir, "semgrep");
   fs.writeFileSync(stub, `#!/bin/sh\ncat ${JSON.stringify(payloadFile)}\n`);
   fs.chmodSync(stub, 0o755);
+  // The scan dir is not a git repository, where the real Gitleaks is skipped
+  // (a coverage gap). This stand-in writes an empty report to --report-path.
+  const gitleaksStub = path.join(stubDir, "gitleaks");
+  fs.writeFileSync(gitleaksStub, `#!/bin/sh\nwhile [ $# -gt 0 ]; do\n  if [ "$1" = "--report-path" ]; then printf '[]' > "$2"; fi\n  shift\ndone\nexit 0\n`);
+  fs.chmodSync(gitleaksStub, 0o755);
 
   const env = { ...process.env, PATH: `${stubDir}:${process.env.PATH}` };
   let code = 0;
