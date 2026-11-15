@@ -6,7 +6,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + [Semantic Ver
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-15
+
 ### Fixed
+- **Release verification** (#83): `SECURITY.md` and
+  `scripts/verify-release.sh` now use the repository's current name,
+  `Stelnyx/secgate`, in the cosign signer identity and the slsa-verifier source
+  URI, and their examples verify `v0.3.0` instead of `v0.1.0`, which has no
+  release assets. The signer identity changes from `Stelnyx/SecGate` to
+  `Stelnyx/secgate` with this release; `SECURITY.md` lists the identities that
+  `v0.2.9` to `v0.2.13` carry.
 - **Scanners disabled by the scanned repo's config are visible** (#84). The
   console prints a `NOTE` after the status line, the JSON report has a
   `disabledByConfig` list, and SARIF runs of those scanners carry
@@ -396,7 +405,8 @@ Initial public release to npm as `@stelnyx/secgate`.
 - npm publish with provenance (`--provenance`).
 - Risk scoring and exit code semantics: exit `0` = clean or low/medium only; exit `1` = CRITICAL or HIGH findings present.
 
-[Unreleased]: https://github.com/Stelnyx/SecGate/compare/v0.2.13...HEAD
+[Unreleased]: https://github.com/Stelnyx/secgate/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Stelnyx/secgate/compare/v0.2.13...v0.3.0
 [0.2.13]: https://github.com/Stelnyx/SecGate/compare/v0.2.12...v0.2.13
 [0.2.12]: https://github.com/Stelnyx/SecGate/compare/v0.2.11...v0.2.12
 [0.2.11]: https://github.com/Stelnyx/SecGate/compare/v0.2.10...v0.2.11

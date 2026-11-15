@@ -25,7 +25,7 @@ One command. One report. One exit code.
 
 **Honest positioning.** SecGate is a **triage accelerator**, not a defect oracle. Dogfooded against a 2,628-file production codebase: **1,858 → 46 actionable findings — 98% noise demoted**. The wrapped scanners are each noisy in isolation (industry estimate: ~70% of raw SAST/SCA output is signal-less). SecGate's job is to surface what's actionable and demote the rest — see [What we demote (and why)](#what-we-demote-and-why).
 
-**Status.** Early release (`v0.2.14`). `v0.2.14` was published to npm without provenance and without a GitHub Release; from the next release, the tag-triggered release workflow publishes to npm with provenance. Report vulnerabilities via [SECURITY.md](SECURITY.md).
+**Status.** Early release (`v0.3.0`). From `v0.3.0` on, the tag-triggered release workflow publishes to npm with provenance and creates the signed GitHub Release; `v0.2.14` was published to npm without provenance and without a GitHub Release. Report vulnerabilities via [SECURITY.md](SECURITY.md).
 
 **Accuracy contract.** SecGate's aggregation pipeline is deterministic — same inputs produce JSON-byte-identical findings, score, and gate status across every run. Report files embed a timestamp, so they are byte-identical only when the inputs, the scanner versions and the timestamp are the same: set `SECGATE_TIMESTAMP` (ISO 8601, e.g. `2026-01-01T00:00:00Z`) or, if it is unset, `SOURCE_DATE_EPOCH` (Unix seconds). Both pin `timestamp` in the JSON report and the audit log; an unparsable value exits 2. Without them the timestamp is the wall-clock time. Scanner versions and rule databases are not pinned by SecGate. Two test suites lock the contract:
 
