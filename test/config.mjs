@@ -49,6 +49,11 @@ function runWithNpmStub(scanDir, npmPayload, extraEnv = {}) {
   const npmStub = path.join(stubDir, "npm");
   fs.writeFileSync(npmStub, `#!/bin/sh\ncat ${JSON.stringify(payloadFile)}\n`);
   fs.chmodSync(npmStub, 0o755);
+  // The scan dir is not a git repository, where the real Gitleaks is skipped
+  // (a coverage gap). This stand-in writes an empty report to --report-path.
+  const gitleaksStub = path.join(stubDir, "gitleaks");
+  fs.writeFileSync(gitleaksStub, `#!/bin/sh\nwhile [ $# -gt 0 ]; do\n  if [ "$1" = "--report-path" ]; then printf '[]' > "$2"; fi\n  shift\ndone\nexit 0\n`);
+  fs.chmodSync(gitleaksStub, 0o755);
 
   // package.json is required for npmAudit to run
   if (!fs.existsSync(path.join(scanDir, "package.json"))) {

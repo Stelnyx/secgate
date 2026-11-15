@@ -72,6 +72,11 @@ function setupScanDir(d, npmPayloadStr) {
   fs.writeFileSync(path.join(d, "package.json"), JSON.stringify({ name: "fx", version: "0.0.0" }));
   const stubDir = fs.mkdtempSync(path.join(os.tmpdir(), "secgate-bl-stubs-"));
   makeNpmStub(stubDir, npmPayloadStr);
+  // The scan dir is not a git repository, where the real Gitleaks is skipped
+  // (a coverage gap). This stand-in writes an empty report to --report-path.
+  const gitleaksStub = path.join(stubDir, "gitleaks");
+  fs.writeFileSync(gitleaksStub, `#!/bin/sh\nwhile [ $# -gt 0 ]; do\n  if [ "$1" = "--report-path" ]; then printf '[]' > "$2"; fi\n  shift\ndone\nexit 0\n`);
+  fs.chmodSync(gitleaksStub, 0o755);
   return stubDir;
 }
 

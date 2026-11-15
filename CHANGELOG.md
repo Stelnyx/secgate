@@ -6,6 +6,40 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + [Semantic Ver
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-15
+
+### Fixed
+- **Gitleaks findings are reported** (#95). Up to and including 0.3.0,
+  SecGate never reported a Gitleaks finding: Gitleaks writes its report only
+  to the file named by `--report-path`, SecGate did not pass that flag, and
+  the empty stdout was read as `clean`, even when Gitleaks had found a leak
+  and exited 1. A repository with a secret in its git history passed the
+  gate. SecGate now passes `--report-path` (a private temp file, with
+  `--redact`) and reads the report from it, so each leak is a CRITICAL
+  finding and fails the gate.
+- **A target outside a git repository is no longer "clean" for Gitleaks**
+  (#95). `gitleaks detect` scans git history only, so outside a repository it
+  scans nothing. Gitleaks is now `skipped` with the reason `not a git
+  repository`, a coverage gap: a scan with no blocking findings ends
+  `INCOMPLETE` (exit 2). Set `scanners.gitleaks` to `false` to scan such a
+  directory on purpose.
+- **A scanner that fails is an error, not clean** (#82). A scanner that cannot
+  start (for example `ENOENT` or `EACCES`), is killed by a signal, or exits
+  with a failure code is reported as `error`, with the reason, and never
+  counts as ran. Failure codes: Gitleaks exiting 1 without a leak in its
+  report, or with a code other than 0 and 1; osv-scanner exiting 1 with no
+  output, or with a code other than 0, 1 and 128 (no package sources);
+  Semgrep exiting 2 or above, or reporting an error at level `error` in its
+  JSON; Trivy (fs and image) exiting with any code other than 0. SecGate now
+  passes `--exit-code 0` to Trivy, which overrides `TRIVY_EXIT_CODE` and a
+  `trivy.yaml` setting, so findings never change Trivy's exit code. Files
+  Semgrep could not parse (level `warn`) still do not fail the scan.
+- **README**: Semgrep downloads its rules from the Semgrep Registry, so it is
+  listed as a network scanner (four of the five wrapped scanners need the
+  internet, not three). Gitleaks scans git history only, not the working
+  tree. The Security Score example is now the real output of a run on
+  `test/fixtures/vulnerable-deps`.
+
 ## [0.3.0] - 2026-11-15
 
 ### Fixed
@@ -405,7 +439,8 @@ Initial public release to npm as `@stelnyx/secgate`.
 - npm publish with provenance (`--provenance`).
 - Risk scoring and exit code semantics: exit `0` = clean or low/medium only; exit `1` = CRITICAL or HIGH findings present.
 
-[Unreleased]: https://github.com/Stelnyx/secgate/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Stelnyx/secgate/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/Stelnyx/secgate/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Stelnyx/secgate/compare/v0.2.13...v0.3.0
 [0.2.13]: https://github.com/Stelnyx/SecGate/compare/v0.2.12...v0.2.13
 [0.2.12]: https://github.com/Stelnyx/SecGate/compare/v0.2.11...v0.2.12

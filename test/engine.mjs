@@ -379,10 +379,17 @@ test("scanners: missing-tool returns skipped status with reason", async () => {
   const config       = { ...CONFIG_DEFAULTS, scanners: { ...CONFIG_DEFAULTS.scanners } };
   const add          = makeFindingProcessor(config, "/tmp", findings, suppressions);
 
-  const result = await runGitleaks("/tmp", { ...CONFIG_DEFAULTS, scanners: { gitleaks: true } }, add, null);
-  if (result.status === "skipped") {
-    assertEq(result.skipReason, "not installed", "skip reason when binary missing");
+  // An empty PATH, so the binary is missing whether or not it is installed.
+  const savedPath = process.env.PATH;
+  process.env.PATH = "";
+  let result;
+  try {
+    result = await runGitleaks("/tmp", { ...CONFIG_DEFAULTS, scanners: { gitleaks: true } }, add, null);
+  } finally {
+    process.env.PATH = savedPath;
   }
+  assertEq(result.status, "skipped", "status when binary missing");
+  assertEq(result.skipReason, "not installed", "skip reason when binary missing");
 });
 
 test("scanners: disabled scanner returns skipped with config reason", async () => {
