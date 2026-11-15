@@ -4,7 +4,7 @@
 
 # Tuning SecGate
 
-How to adjust severity thresholds, baseline noisy findings, suppress rules, toggle scanners, and tune CI vs local defaults. This document reflects the `v0.3.0` CLI.
+How to adjust severity thresholds, baseline noisy findings, suppress rules, toggle scanners, and tune CI vs local defaults. This document reflects the `v0.3.1` CLI.
 
 ---
 

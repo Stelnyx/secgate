@@ -6,6 +6,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + [Semantic Ver
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-15
+
 ### Fixed
 - **Gitleaks findings are reported** (#95). Up to and including 0.3.0,
   SecGate never reported a Gitleaks finding: Gitleaks writes its report only
@@ -435,7 +437,8 @@ Initial public release to npm as `@stelnyx/secgate`.
 - npm publish with provenance (`--provenance`).
 - Risk scoring and exit code semantics: exit `0` = clean or low/medium only; exit `1` = CRITICAL or HIGH findings present.
 
-[Unreleased]: https://github.com/Stelnyx/secgate/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Stelnyx/secgate/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/Stelnyx/secgate/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Stelnyx/secgate/compare/v0.2.13...v0.3.0
 [0.2.13]: https://github.com/Stelnyx/SecGate/compare/v0.2.12...v0.2.13
 [0.2.12]: https://github.com/Stelnyx/SecGate/compare/v0.2.11...v0.2.12
