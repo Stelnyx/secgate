@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "child_process";
+import crypto from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -145,17 +146,33 @@ function makeBinDir(stubs = {}) {
   return dir;
 }
 
+// A Gitleaks stub that behaves like the real binary: it writes `report` to
+// the file named by --report-path, prints nothing on stdout, and exits `code`
+// (1 when it reports leaks).
+function gitleaksStub(report, code) {
+  return [
+    'out=""',
+    'while [ $# -gt 0 ]; do',
+    '  if [ "$1" = "--report-path" ]; then out="$2"; fi',
+    "  shift",
+    "done",
+    `if [ -n "$out" ]; then printf '%s' '${report}' > "$out"; fi`,
+    `exit ${code}`
+  ].join("\n");
+}
+const GITLEAKS_CLEAN = gitleaksStub("[]", 0);
+
 function makeEvalTarget() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "secgate-cov-"));
   fs.writeFileSync(path.join(dir, "index.js"), "eval(userInput);\n");
   return dir;
 }
 
-function runIsolated(binDir, targetDir, extraArgs = []) {
+function runIsolated(binDir, targetDir, extraArgs = [], extraEnv = {}) {
   const res = spawnSync(process.execPath, [bin, targetDir, ...extraArgs], {
     encoding: "utf-8",
     cwd: targetDir,
-    env: { ...process.env, PATH: binDir },
+    env: { ...process.env, ...extraEnv, PATH: binDir },
     maxBuffer: 64 * 1024 * 1024
   });
   const reportPath = path.join(targetDir, "secgate-v7-report.json");
@@ -192,7 +209,7 @@ test("PATH with node only → exit 2, '0 of 5 scanners ran', coverage.ran empty"
 });
 
 test("exactly one scanner available → skipped tools score null, not 100 / 100", () => {
-  const binDir = makeBinDir({ gitleaks: "echo '[]'" });
+  const binDir = makeBinDir({ gitleaks: GITLEAKS_CLEAN });
   const target = makeEvalTarget();
   try {
     const r = runIsolated(binDir, target);
@@ -224,7 +241,7 @@ test("exactly one scanner available → skipped tools score null, not 100 / 100"
 });
 
 test("scanners disabled in config are not a gap → PASS, exit 0", () => {
-  const binDir = makeBinDir({ gitleaks: "echo '[]'" });
+  const binDir = makeBinDir({ gitleaks: GITLEAKS_CLEAN });
   const target = makeEvalTarget();
   fs.writeFileSync(
     path.join(target, ".secgate.config.json"),
@@ -243,7 +260,7 @@ test("scanners disabled in config are not a gap → PASS, exit 0", () => {
   }
 });
 test("--require on a scanner the target config disables → exit 2, INCOMPLETE (#84)", () => {
-  const binDir = makeBinDir({ gitleaks: "echo '[]'" });
+  const binDir = makeBinDir({ gitleaks: GITLEAKS_CLEAN });
   const target = makeEvalTarget();
   fs.writeFileSync(
     path.join(target, ".secgate.config.json"),
@@ -261,7 +278,7 @@ test("--require on a scanner the target config disables → exit 2, INCOMPLETE (
   }
 });
 test("no scanner disabled in config → disabledByConfig empty, no NOTE (#84)", () => {
-  const binDir = makeBinDir({ gitleaks: "echo '[]'" });
+  const binDir = makeBinDir({ gitleaks: GITLEAKS_CLEAN });
   const target = makeEvalTarget();
   try {
     const r = runIsolated(binDir, target);
@@ -275,7 +292,7 @@ test("no scanner disabled in config → disabledByConfig empty, no NOTE (#84)", 
 });
 
 /* ── --ignore-target-policy: the scanned repo cannot hide a finding (#91) ── */
-const POLICY_STUB = `echo '[{"RuleID":"aws-key","Description":"key","File":"index.js","StartLine":1,"EndLine":1}]'`;
+const POLICY_STUB = gitleaksStub('[{"RuleID":"aws-key","Description":"key","File":"index.js","StartLine":1,"EndLine":1}]', 1);
 const POLICY_CONFIGS = {
   failOn: { failOn: [] },
   ignore: { ignore: ["aws-key"] },
@@ -383,8 +400,165 @@ test("trivy fs timeout while image is clean → INCOMPLETE, exit 2", () => {
   assertNotContains(r.stdout, "STATUS: PASS", "console status");
 });
 
+/* ── A scanner that fails is an error, never clean (#82, #95) ── */
+
+function withStubs(stubs, fn, setup) {
+  const binDir = makeBinDir(stubs);
+  const target = makeEvalTarget();
+  if (setup) setup(binDir, target);
+  try {
+    return fn(runIsolated(binDir, target));
+  } finally {
+    fs.rmSync(binDir, { recursive: true, force: true });
+    fs.rmSync(target, { recursive: true, force: true });
+  }
+}
+
+test("gitleaks: leak in the --report-path file, stdout empty, exit 1 → CRITICAL finding, FAIL (#95)", () => {
+  const report = '[{"RuleID":"github-pat","Description":"GitHub Personal Access Token","File":"index.js","StartLine":1,"EndLine":1}]';
+  withStubs({ gitleaks: gitleaksStub(report, 1) }, r => {
+    if (!r.rep) throw new Error("report not written");
+    assertEq(r.rep.tools.gitleaks, "ran", "gitleaks status");
+    const found = r.rep.findings.filter(f => f.tool === "gitleaks");
+    assertEq(found.length, 1, "gitleaks findings");
+    assertEq(found[0].severity, "CRITICAL", "severity");
+    assertEq(r.rep.status, "FAIL", "status");
+    assertEq(r.code, 1, "exit");
+  });
+});
+
+test("gitleaks: exit 1 without a leak in its report → error, not clean (#95)", () => {
+  withStubs({ gitleaks: gitleaksStub("[]", 1) }, r => {
+    if (!r.rep) throw new Error("report not written");
+    assertEq(r.rep.tools.gitleaks, "error", "gitleaks status");
+    assertContains(r.rep.toolSkipReason.gitleaks || "", "without reporting a leak", "reason");
+    assertEq(r.code, 2, "exit");
+  });
+});
+
+test("gitleaks outside a git repository → skipped with a reason, never clean (#95)", () => {
+  // Gitleaks relays git's error on stderr; 8.30 then exits 0, 8.21 exits 1.
+  for (const code of [0, 1]) {
+    const stub = `echo '[git] fatal: not a git repository (or any of the parent directories): .git' >&2\n${gitleaksStub("[]", code)}`;
+    withStubs({ gitleaks: stub }, r => {
+      if (!r.rep) throw new Error("report not written");
+      assertEq(r.rep.tools.gitleaks, "skipped", `exit ${code}: status`);
+      assertContains(r.rep.toolSkipReason.gitleaks || "", "not a git repository", `exit ${code}: reason`);
+      assertEq(r.rep.status, "INCOMPLETE", `exit ${code}: report status`);
+    });
+  }
+});
+
+test("a scanner that exits 1 with empty stdout is an error, the run is not PASS (#82)", () => {
+  const stubs = { gitleaks: "exit 1", semgrep: "exit 1", "osv-scanner": "exit 1", trivy: "exit 1", npm: "exit 1" };
+  withStubs(stubs, r => {
+    if (!r.rep) throw new Error("report not written");
+    for (const key of ["gitleaks", "semgrep", "osv", "trivy", "npm"]) {
+      assertEq(r.rep.tools[key], "error", `${key} status`);
+    }
+    assertEq(r.rep.status, "INCOMPLETE", "status");
+    assertEq(r.code, 2, "exit");
+  }, (binDir, target) => fs.writeFileSync(path.join(target, "package.json"), "{}\n"));
+});
+
+test("a scanner binary that cannot start is an error, not clean (#82)", () => {
+  withStubs({}, r => {
+    if (!r.rep) throw new Error("report not written");
+    for (const key of ["gitleaks", "osv"]) {
+      assertEq(r.rep.tools[key], "error", `${key} status`);
+      assertContains(r.rep.toolSkipReason[key] || "", "could not run (ENOENT)", `${key} reason`);
+    }
+    assertEq(r.code, 2, "exit");
+  }, binDir => {
+    // Executable, so it is found on PATH, but its interpreter does not exist.
+    for (const name of ["gitleaks", "osv-scanner"]) {
+      fs.writeFileSync(path.join(binDir, name), "#!/nonexistent/interpreter\n");
+      fs.chmodSync(path.join(binDir, name), 0o755);
+    }
+  });
+});
+
+test("semgrep: a fatal error in its JSON is an error; a file it could not parse is not (#82)", () => {
+  const cases = [
+    { level: "error", type: '"SemgrepError"', want: "error" },
+    { level: "warn", type: '["PartialParsing",[]]', want: "clean" }
+  ];
+  for (const c of cases) {
+    const json = `{"results":[],"errors":[{"code":2,"level":"${c.level}","type":${c.type},"message":"x"}]}`;
+    withStubs({ semgrep: `echo '${json}'` }, r => {
+      if (!r.rep) throw new Error("report not written");
+      assertEq(r.rep.tools.semgrep, c.want, `level ${c.level}`);
+    });
+  }
+});
+
+test("osv-scanner exit 128 (no package sources found) stays clean (#82)", () => {
+  const stub = "echo 'No package sources found, --help for usage information.' >&2; exit 128";
+  withStubs({ "osv-scanner": stub }, r => {
+    if (!r.rep) throw new Error("report not written");
+    assertEq(r.rep.tools.osv, "clean", "osv status");
+  });
+});
+
+// The same Gitleaks checks against the real binary, when it is installed (CI
+// installs it). Only Gitleaks is enabled, so the result is Gitleaks' alone.
+function onPath(cmd) {
+  return !spawnSync(cmd, ["--version"], { stdio: "ignore" }).error;
+}
+const ONLY_GITLEAKS = JSON.stringify({ scanners: { semgrep: false, osv: false, trivy: false, npm: false } });
+
+test("real gitleaks: a token committed to git history is reported (#95)", () => {
+  if (!onPath("gitleaks") || !onPath("git")) {
+    console.log("  skip  real gitleaks: token in git history (gitleaks or git not installed)");
+    return;
+  }
+  const target = fs.mkdtempSync(path.join(os.tmpdir(), "secgate-gitleaks-repo-"));
+  try {
+    // Built at run time, so this file holds no token for scanners to flag.
+    const token = "ghp_" + crypto.randomBytes(18).toString("hex");
+    fs.writeFileSync(path.join(target, "config.js"), `const token = "${token}";\n`);
+    const git = args => spawnSync("git", [
+      "-c", "user.name=SecGate test", "-c", "user.email=test@example.com",
+      "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...args
+    ], { cwd: target, encoding: "utf-8" });
+    for (const args of [["init", "-q"], ["add", "config.js"], ["commit", "-q", "-m", "add config"]]) {
+      const res = git(args);
+      if (res.status !== 0) throw new Error(`git ${args[0]} failed: ${res.stderr}`);
+    }
+    fs.writeFileSync(path.join(target, ".secgate.config.json"), ONLY_GITLEAKS);
+    const r = runIsolated(process.env.PATH, target);
+    if (!r.rep) throw new Error("report not written");
+    assertEq(r.rep.tools.gitleaks, "ran", "gitleaks status");
+    const found = r.rep.findings.filter(f => f.tool === "gitleaks");
+    assertEq(found.some(f => f.signature === "github-pat"), true, "github-pat finding");
+    assertEq(r.rep.status, "FAIL", "status");
+    assertEq(r.code, 1, "exit");
+  } finally {
+    fs.rmSync(target, { recursive: true, force: true });
+  }
+});
+
+test("real gitleaks: a directory outside git → skipped with a reason (#95)", () => {
+  if (!onPath("gitleaks")) {
+    console.log("  skip  real gitleaks: directory outside git (gitleaks not installed)");
+    return;
+  }
+  const target = fs.mkdtempSync(path.join(os.tmpdir(), "secgate-gitleaks-nogit-"));
+  try {
+    fs.writeFileSync(path.join(target, ".secgate.config.json"), ONLY_GITLEAKS);
+    // Keep git from finding a repository above the temp directory.
+    const r = runIsolated(process.env.PATH, target, [], { GIT_CEILING_DIRECTORIES: path.dirname(target) });
+    if (!r.rep) throw new Error("report not written");
+    assertEq(r.rep.tools.gitleaks, "skipped", "gitleaks status");
+    assertContains(r.rep.toolSkipReason.gitleaks || "", "not a git repository", "reason");
+    assertEq(r.rep.status, "INCOMPLETE", "status");
+  } finally {
+    fs.rmSync(target, { recursive: true, force: true });
+  }
+});
+
 test("--require semgrep without semgrep on PATH → exit 2", () => {
-  const binDir = makeBinDir({ gitleaks: "echo '[]'" });
+  const binDir = makeBinDir({ gitleaks: GITLEAKS_CLEAN });
   const target = makeEvalTarget();
   try {
     const r = runIsolated(binDir, target, ["--require", "semgrep"]);
@@ -398,7 +572,7 @@ test("--require semgrep without semgrep on PATH → exit 2", () => {
 });
 
 test("requireScanners config key without the tool on PATH → exit 2", () => {
-  const binDir = makeBinDir({ gitleaks: "echo '[]'" });
+  const binDir = makeBinDir({ gitleaks: GITLEAKS_CLEAN });
   const target = makeEvalTarget();
   fs.writeFileSync(path.join(target, ".secgate.config.json"), JSON.stringify({ requireScanners: ["osv-scanner"] }));
   try {
@@ -419,7 +593,7 @@ test("--require with an unknown scanner name → exit 2 before scanning", () => 
 });
 
 function withGitleaksOnly(config, fn) {
-  const binDir = makeBinDir({ gitleaks: "echo '[]'" });
+  const binDir = makeBinDir({ gitleaks: GITLEAKS_CLEAN });
   const target = makeEvalTarget();
   if (config !== undefined) {
     fs.writeFileSync(path.join(target, ".secgate.config.json"), JSON.stringify(config));

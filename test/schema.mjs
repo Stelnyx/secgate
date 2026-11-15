@@ -44,10 +44,14 @@ function runWithStubs(scanDir, stubs) {
 
   for (const [name, payload] of Object.entries(stubs)) {
     const p = path.join(stubDir, name);
-    // Use a POSIX shell shim that prints the payload verbatim.
+    // Use a POSIX shell shim that prints the payload verbatim. Gitleaks
+    // writes its report to --report-path instead, so its shim copies it there.
     const file = path.join(stubDir, `${name}.json`);
     fs.writeFileSync(file, payload);
-    fs.writeFileSync(p, `#!/bin/sh\ncat ${JSON.stringify(file)}\n`);
+    const body = name === "gitleaks"
+      ? `while [ $# -gt 0 ]; do\n  if [ "$1" = "--report-path" ]; then cp ${JSON.stringify(file)} "$2"; fi\n  shift\ndone\nexit 1`
+      : `cat ${JSON.stringify(file)}`;
+    fs.writeFileSync(p, `#!/bin/sh\n${body}\n`);
     fs.chmodSync(p, 0o755);
   }
 
