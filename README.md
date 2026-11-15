@@ -282,8 +282,29 @@ required scanner that the config disables exits `2`. SecGate also prints
 status line, and lists the scanners in `disabledByConfig` in the JSON report.
 In a workflow that scans pull requests, use `with: require: semgrep,gitleaks`.
 `--require` guarantees that the scanners ran, not that their findings block:
-the scanned repo's config can still change `failOn`, `ignore` and
-`excludePaths` (#91).
+the config's `failOn`, `ignore`, `excludePaths` and `severityOverrides` can
+still hide findings. Add `--ignore-target-policy` (the action's
+`ignore-target-policy: "true"`) to ignore those four keys and use the built-in
+defaults instead (`failOn: ["critical","high"]`, empty lists for the rest). The
+console verdict prints `NOTE: --ignore-target-policy is set: ...` with the keys
+the repo had set, and the JSON report (`ignoredTargetPolicy`) and each SARIF run
+(`properties.ignoredTargetPolicy`) list them. The flag is off by default.
+```yaml
+- uses: Stelnyx/SecGate/.github/actions/secgate@main
+  with:
+    require: semgrep,gitleaks
+    ignore-target-policy: "true"
+```
+Limits:
+- The control holds only while pull requests cannot change the workflow file.
+  A `pull_request` run uses the workflow file from the pull request's merge
+  commit, so a pull request can edit `.github/workflows/` and drop the flag.
+- Inline `secgate:ignore` comments and the baseline file used by `--baseline`
+  still come from the scanned repo, and a pull request can use them to hide a
+  finding even with the flag (checked with a run). Tracked in #92.
+- The action fails with exit 2 if the report does not show the flag was
+  applied, for example when `npx` runs a published CLI older than the one that
+  added the flag (such a CLI ignores the unknown flag).
 
 ---
 
@@ -355,6 +376,7 @@ CLI flag  >  .secgate.config.json  >  built-in defaults
 ```
 
 - `--baseline` and `--update-baseline` are CLI-only (no config equivalent).
+- `--ignore-target-policy` ignores `failOn`, `ignore`, `excludePaths` and `severityOverrides` from this file (see "Untrusted pull requests").
 - Missing config file: silent, defaults apply. Invalid JSON: error logged, defaults apply.
 
 ### Baseline workflow
@@ -455,6 +477,7 @@ A composite action is published at `.github/actions/secgate/` in this repo.
 | `fail-on` | `critical,high`  | Severity levels that fail the step                       |
 | `format`  | `json,html`      | Output formats — comma-separated: `json`, `html`, `sarif`|
 | `require` | empty            | Scanners that must run (`semgrep,gitleaks,npm,osv,trivy`), passed to the CLI as `--require`. Empty uses `requireScanners` from the config file |
+| `ignore-target-policy` | `false` | `true` passes `--ignore-target-policy`: the scanned repo's `failOn`, `ignore`, `excludePaths` and `severityOverrides` are ignored. Any value other than `true` or `false` fails the step with exit 2 |
 
 The step fails when the CLI exits 2 (incomplete scan, no scanner ran, or a
 `require`d scanner did not run), whatever `fail-on` says. `fail-on` only

@@ -274,6 +274,46 @@ test("no scanner disabled in config → disabledByConfig empty, no NOTE (#84)", 
   }
 });
 
+/* ── --ignore-target-policy: the scanned repo cannot hide a finding (#91) ── */
+const POLICY_STUB = `echo '[{"RuleID":"aws-key","Description":"key","File":"index.js","StartLine":1,"EndLine":1}]'`;
+const POLICY_CONFIGS = {
+  failOn: { failOn: [] },
+  ignore: { ignore: ["aws-key"] },
+  excludePaths: { excludePaths: ["index.js"] },
+  severityOverrides: { severityOverrides: [{ rule: "aws-key", severity: "low" }] }
+};
+function runPolicyCase(config, extraArgs) {
+  const binDir = makeBinDir({ gitleaks: POLICY_STUB });
+  const target = makeEvalTarget();
+  fs.writeFileSync(path.join(target, ".secgate.config.json"), JSON.stringify(config));
+  try {
+    return runIsolated(binDir, target, extraArgs);
+  } finally {
+    fs.rmSync(binDir, { recursive: true, force: true });
+    fs.rmSync(target, { recursive: true, force: true });
+  }
+}
+test("--ignore-target-policy: config cannot hide the finding, verdict says so (#91)", () => {
+  for (const [key, config] of Object.entries(POLICY_CONFIGS)) {
+    const r = runPolicyCase(config, ["--ignore-target-policy"]);
+    assertEq(r.code, 1, `${key}: exit`);
+    assertEq(r.rep.status, "FAIL", `${key}: status`);
+    assertEq(JSON.stringify(r.rep.ignoredTargetPolicy), JSON.stringify([key]), `${key}: ignoredTargetPolicy`);
+    assertContains(r.stdout, `keys ignored: ${key}`, `${key}: NOTE`);
+  }
+  const none = runPolicyCase({}, ["--ignore-target-policy"]);
+  assertEq(JSON.stringify(none.rep.ignoredTargetPolicy), "[]", "no keys set → empty list");
+  assertContains(none.stdout, "keys ignored: none", "NOTE with no keys");
+});
+test("without --ignore-target-policy: config still hides the finding, no new field or NOTE (#91)", () => {
+  for (const [key, config] of Object.entries(POLICY_CONFIGS)) {
+    const r = runPolicyCase(config, []);
+    assertEq(r.code, 2, `${key}: exit (finding hidden, coverage partial → INCOMPLETE)`);
+    assertEq(r.rep.status, "INCOMPLETE", `${key}: status`);
+    assertEq("ignoredTargetPolicy" in r.rep, false, `${key}: no ignoredTargetPolicy`);
+    assertNotContains(r.stdout, "ignore-target-policy", `${key}: no NOTE`);
+  }
+});
 /* ── Trivy: fs and image sub-scans must each succeed (#73) ── */
 
 // Only Trivy is in play: the other scanners are disabled in config (not a

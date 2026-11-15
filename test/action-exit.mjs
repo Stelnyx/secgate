@@ -47,7 +47,7 @@ writeFileSync(join(tmp, "stub.mjs"), STUB);
 writeFileSync(join(tmp, "step.sh"), SCRIPT);
 
 let n = 0;
-function runStep({ exit, report, failOn = "critical,high", require = "", format = "json,html", stale, env = {}, secgatePath = join(tmp, "stub.mjs"), path = process.env.PATH }) {
+function runStep({ exit, report, failOn = "critical,high", require = "", ignorePolicy, format = "json,html", stale, env = {}, secgatePath = join(tmp, "stub.mjs"), path = process.env.PATH }) {
   const work = join(tmp, `case${++n}`);
   spawnSync("mkdir", ["-p", work]);
   const out = join(work, "github_output");
@@ -66,6 +66,7 @@ function runStep({ exit, report, failOn = "critical,high", require = "", format 
       SECGATE_FORMAT: format,
       SECGATE_FAIL_ON: failOn,
       SECGATE_REQUIRE: require,
+      ...(ignorePolicy === undefined ? {} : { SECGATE_IGNORE_TARGET_POLICY: ignorePolicy }),
       SECGATE_PATH: secgatePath,
       STUB_EXIT: String(exit),
       STUB_ARGS_FILE: argsFile,
@@ -202,6 +203,23 @@ try {
     const none = runStep({ exit: 0, report: clean });
     assert.ok(!none.args.includes("--require"), "no --require when the input is empty");
     console.log("  ok  require input → --require <list>; empty → flag omitted");
+  }
+  // ignore-target-policy (#91): validated, passed through, and checked in the report.
+  {
+    const bad = runStep({ exit: 0, report: clean, ignorePolicy: "yes" });
+    assert.equal(bad.status, 2, `invalid ignore-target-policy must fail with 2, got ${bad.status}`);
+    assert.match(bad.stdout, /::error::Invalid ignore-target-policy/);
+    assert.equal(bad.args, null, "the CLI is not run with an invalid value");
+    const on = runStep({ exit: 0, report: { ...clean, ignoredTargetPolicy: [] }, ignorePolicy: "true" });
+    assert.equal(on.status, 0, `true with a report that shows it → 0, got ${on.status}\n${on.stdout}${on.stderr}`);
+    assert.ok(on.args.includes("--ignore-target-policy"), `flag passed, got ${JSON.stringify(on.args)}`);
+    const old = runStep({ exit: 0, report: clean, ignorePolicy: "true" });
+    assert.equal(old.status, 2, `true with a report that lacks the field (old CLI) → 2, got ${old.status}`);
+    assert.match(old.stdout, /::error::ignore-target-policy is true but the report does not show/);
+    const off = runStep({ exit: 0, report: clean, ignorePolicy: "false" });
+    assert.equal(off.status, 0, "false stays green");
+    assert.ok(!off.args.includes("--ignore-target-policy"), "no flag when false");
+    console.log("  ok  ignore-target-policy: invalid → 2; true → flag + report check (old CLI → 2); false → no flag");
   }
 } finally {
   rmSync(tmp, { recursive: true, force: true });

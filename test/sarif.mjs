@@ -256,6 +256,19 @@ test("SARIF marks runs of scanners disabled by the target config (#84)", () => {
   assertEq(gitleaksRun.properties.disabledByConfig, undefined, "gitleaks has no disabledByConfig");
   fs.rmSync(d, { recursive: true, force: true });
 });
+test("SARIF runs carry ignoredTargetPolicy only with --ignore-target-policy (#91)", () => {
+  const d = scratchDir("policy");
+  fs.writeFileSync(path.join(d, ".secgate.config.json"), JSON.stringify({ failOn: [] }));
+  const on = runWithStubs(d, {}, ["--format", "sarif", "--ignore-target-policy"]).sarif;
+  for (const run of on.runs) {
+    assertEq(JSON.stringify(run.properties.ignoredTargetPolicy), JSON.stringify(["failOn"]), `${run.tool.driver.name} property`);
+  }
+  const off = runWithStubs(d, {}, ["--format", "sarif"]).sarif;
+  for (const run of off.runs) {
+    assertEq(run.properties.ignoredTargetPolicy, undefined, `${run.tool.driver.name} has no property`);
+  }
+  fs.rmSync(d, { recursive: true, force: true });
+});
 test("SARIF LOW severity maps to level: note", () => {
   const lowPayload = JSON.stringify({
     results: [
