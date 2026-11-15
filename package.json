@@ -1,6 +1,6 @@
 {
   "name": "@stelnyx/secgate",
-  "version": "0.2.14",
+  "version": "0.3.0",
   "description": "Tiny security gate for CI/CD — orchestrates Semgrep, Gitleaks, osv-scanner, Trivy, and npm audit with a premium HTML report.",
   "type": "module",
   "bin": {
@@ -71,7 +71,7 @@
     "prepublishOnly": "npm run check:deps && npm test && npm run lint"
   },
   "dependencies": {
-     "@stelnyx/report-theme": "^0.1.4"
+    "@stelnyx/report-theme": "^0.1.4"
   },
   "devDependencies": {
     "@eslint/js": "^9.27.0",
