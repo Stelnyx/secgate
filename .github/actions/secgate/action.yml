@@ -27,6 +27,10 @@ inputs:
     description: Comma-separated scanners that must run (semgrep,gitleaks,npm,osv,trivy). Passed to the CLI as --require; the step fails with exit 2 if one did not run. Empty uses the CLI default (requireScanners from the config file).
     required: false
     default: ""
+  ignore-target-policy:
+    description: 'Set to "true" to ignore failOn, ignore, excludePaths and severityOverrides from the scanned repo''s .secgate.config.json (passes --ignore-target-policy). Only "true" or "false" are accepted. Requires a CLI that supports the flag; the step fails with exit 2 if the report does not show it was applied. Holds only while pull requests cannot change the workflow file.'
+    required: false
+    default: "false"
   secgate-path:
     description: Path to a local secgate.js to run instead of the published npm package (used by this repo's own CI to scan the code under test)
     required: false
@@ -57,9 +61,19 @@ runs:
         SECGATE_FORMAT: ${{ inputs.format }}
         SECGATE_FAIL_ON: ${{ inputs.fail-on }}
         SECGATE_REQUIRE: ${{ inputs.require }}
+        SECGATE_IGNORE_TARGET_POLICY: ${{ inputs.ignore-target-policy }}
         SECGATE_PATH: ${{ inputs.secgate-path }}
       run: |
         ARGS=("$SECGATE_TARGET")
+        # A typo must not switch a security control off silently.
+        IGNORE_POLICY="${SECGATE_IGNORE_TARGET_POLICY:-false}"
+        case "$IGNORE_POLICY" in
+          true|false) ;;
+          *)
+            echo "::error::Invalid ignore-target-policy '${IGNORE_POLICY//[^A-Za-z0-9_-]/?}' (allowed: true, false)"
+            exit 2
+            ;;
+        esac
         if [ "$SECGATE_APPLY" = "true" ]; then
           ARGS+=("--apply")
         fi
@@ -68,6 +82,9 @@ runs:
           ARGS+=("--require" "$SECGATE_REQUIRE")
         fi
 
+        if [ "$IGNORE_POLICY" = "true" ]; then
+          ARGS+=("--ignore-target-policy")
+        fi
         TARGET_ABS="$(realpath "$SECGATE_TARGET")"
         REPO_NAME="$(basename "$TARGET_ABS")"
 
@@ -101,6 +118,14 @@ runs:
           exit "$SECGATE_EXIT"
         fi
 
+        # An older CLI ignores an unknown flag. If the report does not show the
+        # control, it was not applied: do not end green.
+        if [ "$IGNORE_POLICY" = "true" ]; then
+          if ! node -e "const r=JSON.parse(require('fs').readFileSync('secgate-v7-report.json'));process.exit(Array.isArray(r.ignoredTargetPolicy)?0:1)" 2>/dev/null; then
+            echo "::error::ignore-target-policy is true but the report does not show it was applied (the CLI may be too old to support --ignore-target-policy)"
+            exit 2
+          fi
+        fi
         # Apply fail-on filter: only exit non-zero for configured severities.
         if [ -f secgate-v7-report.json ]; then
           IFS=',' read -ra LEVELS <<< "$SECGATE_FAIL_ON"

@@ -74,6 +74,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + [Semantic Ver
   tag-driven release flow.
 
 ### Added
+- **`--ignore-target-policy`** (#91), and an action input
+  `ignore-target-policy` (default `"false"`). When set, SecGate ignores the
+  scanned repo's `failOn`, `ignore`, `excludePaths` and `severityOverrides` and
+  uses the built-in defaults. The console prints a `NOTE`, the JSON report has
+  `ignoredTargetPolicy` and SARIF runs carry `properties.ignoredTargetPolicy`
+  (the keys the repo had set). Off by default; output is unchanged without it.
+  The action fails with exit 2 for a value other than `true`/`false`, and when
+  `true` but the report does not show the control was applied (an older CLI
+  ignores the flag). Inline `secgate:ignore` comments and the `--baseline` file
+  are not covered (#92).
 - `--require <tools>` (also `--require=<tools>`) and the `requireScanners`
   config key.
 
