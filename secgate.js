@@ -106,6 +106,11 @@ Options:
                       or names an unknown scanner. Overrides
                       requireScanners in the config file. The scanned
                       repo's config cannot change this flag.
+  --ignore-target-policy
+                      Ignore failOn, ignore, excludePaths and severityOverrides
+                      from the scanned repo's .secgate.config.json and use the
+                      built-in defaults. The console verdict, JSON and SARIF
+                      say so. Off by default.
   --debug             Print raw scanner output
   --profile <name>    Confidence profile: 'curated' (default; demotes
                       noisy rules + base-image OS CVEs + stale CVEs to
@@ -175,6 +180,7 @@ const BASELINE_MODE    = argv.includes("--baseline");
 const UPDATE_BASELINE  = argv.includes("--update-baseline");
 const PROFILE_FLAG     = argValue("--profile");
 const ALLOW_WORKSPACE  = argv.includes("--allow-workspace");
+const IGNORE_TARGET_POLICY = argv.includes("--ignore-target-policy");
 // Accept both "--require semgrep,gitleaks" and "--require=semgrep,gitleaks".
 const REQUIRE_EQ       = argv.find(a => a.startsWith("--require="));
 const REQUIRE_PRESENT  = argv.includes("--require") || REQUIRE_EQ !== undefined;
@@ -260,7 +266,7 @@ const outputFile   = path.join(outputDir, "secgate-v7-report.json");
    CONFIG + STATE
    ──────────────────────────────────────────────────────────────────────────── */
 
-const config = loadConfig(target);
+const config = loadConfig(target, { ignoreTargetPolicy: IGNORE_TARGET_POLICY });
 if (PROFILE_FLAG) {
   if (PROFILE_FLAG === "curated" || PROFILE_FLAG === "strict") {
     config.profile = PROFILE_FLAG;
@@ -572,6 +578,7 @@ report.remediation   = remediate(activeFindings, {
 report.status        = resolveStatus(activeFindings, config.failOn, BASELINE_MODE);
 report.coverage      = coverage;
 report.disabledByConfig = configDisabled;
+if (IGNORE_TARGET_POLICY) report.ignoredTargetPolicy = config.ignoredTargetPolicy;
 
 // A scan that could not look is not a pass: exit 2 and say so in the report.
 if (coverageExit2) report.status = "INCOMPLETE";
@@ -629,6 +636,10 @@ console.log("\n─────────────────────�
 console.log(coverage.skipped.length ? `STATUS: ${report.status} (${coverageLine})` : `STATUS: ${report.status}`);
 if (configDisabled.length) {
   console.log(`NOTE: disabled by the scanned repo's .secgate.config.json: ${configDisabled.join(", ")}. Set --require in the workflow so a pull request cannot turn scanners off.`);
+}
+if (IGNORE_TARGET_POLICY) {
+  const keys = report.ignoredTargetPolicy;
+  console.log(`NOTE: --ignore-target-policy is set: the scanned repo's .secgate.config.json keys ignored: ${keys.length ? keys.join(", ") : "none"}.`);
 }
 console.log("RISK SCORE:", report.intelligence.riskScore);
 console.log("CONFIDENCE:", report.remediation.confidence + "%");
