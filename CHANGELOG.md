@@ -7,6 +7,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + [Semantic Ver
 ## [Unreleased]
 
 ### Fixed
+- **Release verification** (#83): `SECURITY.md` and
+  `scripts/verify-release.sh` now use the repository's current name,
+  `Stelnyx/secgate`, in the cosign signer identity and the slsa-verifier source
+  URI, and their examples verify `v0.3.0` instead of `v0.1.0`, which has no
+  release assets. The signer identity changes from `Stelnyx/SecGate` to
+  `Stelnyx/secgate` with this release; `SECURITY.md` lists the identities that
+  `v0.2.9` to `v0.2.13` carry.
 - **Scanners disabled by the scanned repo's config are visible** (#84). The
   console prints a `NOTE` after the status line, the JSON report has a
   `disabledByConfig` list, and SARIF runs of those scanners carry

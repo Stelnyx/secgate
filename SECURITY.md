@@ -140,7 +140,17 @@ the exact workflow that produced it:
 
 - Expected OIDC issuer: `https://token.actions.githubusercontent.com`
 - Expected signer identity (regex):
-  `^https://github\.com/Stelnyx/SecGate/\.github/workflows/release\.yml@refs/tags/.*`
+  `^https://github\.com/Stelnyx/secgate/\.github/workflows/release\.yml@refs/tags/.*`
+
+This identity applies from `v0.3.0`. The repository was renamed from
+`Stelnyx/SecGate` to `Stelnyx/secgate`, and cosign matches the identity
+case-sensitively. Releases `v0.2.9` to `v0.2.13` were signed under the old
+name. Their certificates name
+`https://github.com/Stelnyx/SecGate/.github/workflows/release.yml@refs/tags/<tag>`
+(`v0.2.9`, `v0.2.11`, `v0.2.12`) or `...release.yml@refs/heads/main`
+(`v0.2.10` and `v0.2.13`, built from `main`), and their provenance names the
+source `github.com/Stelnyx/SecGate` at the same ref. The commands below do not
+verify them as written.
 
 The npm publish and the release-artifact signatures come from the same
 workflow, `.github/workflows/release.yml`. When the npm Trusted Publisher
@@ -155,14 +165,14 @@ the signal, and release notes will call it out.
 ### One-line verification
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Stelnyx/SecGate/main/scripts/verify-release.sh \
-  | bash -s -- v0.1.0
+curl -fsSL https://raw.githubusercontent.com/Stelnyx/secgate/main/scripts/verify-release.sh \
+  | bash -s -- v0.3.0
 ```
 
 Or from a clone:
 
 ```bash
-scripts/verify-release.sh v0.1.0
+scripts/verify-release.sh v0.3.0
 ```
 
 The script verifies: SBOM presence + CycloneDX shape, SHA256SUMS, cosign
@@ -175,8 +185,8 @@ Install [`cosign`](https://docs.sigstore.dev/system_config/installation) (>=
 2.4), then:
 
 ```bash
-VERSION=v0.1.0
-BASE="https://github.com/Stelnyx/SecGate/releases/download/${VERSION}"
+VERSION=v0.3.0
+BASE="https://github.com/Stelnyx/secgate/releases/download/${VERSION}"
 TARBALL="secgate-${VERSION#v}.tgz"
 SBOM="secgate-${VERSION#v}.sbom.cdx.json"
 ATT="secgate-${VERSION}.intoto.jsonl"
@@ -195,14 +205,14 @@ cosign verify-blob \
   --certificate "${TARBALL}.pem" \
   --signature "${TARBALL}.sig" \
   --certificate-identity-regexp \
-    '^https://github\.com/Stelnyx/SecGate/\.github/workflows/release\.yml@refs/tags/.*' \
+    '^https://github\.com/Stelnyx/secgate/\.github/workflows/release\.yml@refs/tags/.*' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   "$TARBALL"
 
 # 3. SLSA L3 provenance
 slsa-verifier verify-artifact \
   --provenance-path "$ATT" \
-  --source-uri github.com/Stelnyx/SecGate \
+  --source-uri github.com/Stelnyx/secgate \
   --source-tag "$VERSION" \
   "$TARBALL"
 ```

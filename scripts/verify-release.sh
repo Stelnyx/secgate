@@ -9,7 +9,7 @@
 #
 # Usage:
 #   scripts/verify-release.sh <version>
-#   scripts/verify-release.sh v0.1.0
+#   scripts/verify-release.sh v0.3.0
 #
 # Requires: cosign (>=2.0), slsa-verifier (>=2.4), jq, curl, sha256sum
 #
@@ -17,7 +17,7 @@
 #
 set -euo pipefail
 
-REPO_SLUG="${REPO_SLUG:-Stelnyx/SecGate}"
+REPO_SLUG="${REPO_SLUG:-Stelnyx/secgate}"
 EXPECTED_IDENTITY_REGEX="${EXPECTED_IDENTITY_REGEX:-^https://github\.com/${REPO_SLUG}/\.github/workflows/release\.yml@refs/tags/.*}"
 EXPECTED_ISSUER="${EXPECTED_ISSUER:-https://token.actions.githubusercontent.com}"
 
@@ -35,7 +35,7 @@ require_cmd curl
 require_cmd sha256sum
 
 VERSION="${1:-}"
-[ -n "$VERSION" ] || die "usage: $0 <version>  (e.g. v0.1.0)"
+[ -n "$VERSION" ] || die "usage: $0 <version>  (e.g. v0.3.0)"
 case "$VERSION" in
   v*) ;;
   *)  VERSION="v${VERSION}" ;;
