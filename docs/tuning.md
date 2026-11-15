@@ -4,13 +4,13 @@
 
 # Tuning SecGate
 
-How to adjust severity thresholds, baseline noisy findings, suppress rules, toggle scanners, and tune CI vs local defaults. This document reflects the current `v0.2.14` CLI.
+How to adjust severity thresholds, baseline noisy findings, suppress rules, toggle scanners, and tune CI vs local defaults. This document reflects the `v0.3.0` CLI.
 
 ---
 
 ## Confidence Profiles (display-only, never gating)
 
-SecGate's HTML report ships two confidence profiles. The exit code (`0` / `1`) is **never** affected — the `failOn` policy alone gates CI. Profiles only change which findings render inline vs in collapsed details blocks.
+SecGate's HTML report ships two confidence profiles. The profile **never** changes the exit code: the `failOn` policy decides `0` or `1`, and a scanner that applies but did not run turns a pass into `2`. Profiles only change which findings render inline vs in collapsed details blocks.
 
 ### `curated` (default)
 
@@ -162,9 +162,9 @@ Use the rule ID from the JSON report (`findings[].signature` field). Copy-paste 
 
 Any scanner set to `false` is skipped and reported as `status: "skipped"`. To run only one scanner, disable the rest.
 
-### Alternative — remove the binary
+### Missing scanner binaries
 
-SecGate skips any scanner whose binary is not on `$PATH` (reported as `skipped` with reason `not installed`). Useful when you control the CI image — install only the scanners you want to run.
+A scanner whose binary is not on `$PATH` is reported as `skipped` with reason `not installed`. Since `v0.3.0` that is a coverage gap: if the scanner applies to the project, a scan with no blocking findings ends `INCOMPLETE` with exit `2` instead of `PASS`. To skip a scanner on purpose, set it to `false` in `.secgate.config.json` as shown above; a disabled scanner is not a gap.
 
 CLI flags `--disable <list>` and `--only <scanner>` are planned — see [#32](https://github.com/Stelnyx/SecGate/issues/32).
 

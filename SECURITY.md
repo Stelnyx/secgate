@@ -126,7 +126,7 @@ From the next release, every `vX.Y.Z` tag produces them through
 On the same date, `npm view` reported
 [npm provenance](https://docs.npmjs.com/generating-provenance-statements) for
 npm versions `0.2.9` and `0.2.11` to `0.2.13`, and none for `0.2.14`
-(`0.2.10` is not on npm). From the next release, the `Release` workflow publishes the
+(`0.2.10` is not on npm). From `v0.3.0`, the `Release` workflow publishes the
 signed tarball to npm with provenance through npm Trusted Publishing. Check a
 version with
 `npm view @stelnyx/secgate@<version> dist.attestations.provenance.predicateType`
