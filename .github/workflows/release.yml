@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag to release (e.g. v0.2.15). Must equal the tag selected in 'Use workflow from'."
+        description: "Tag to release (e.g. v0.3.3). Must equal the tag selected in 'Use workflow from'."
         required: true
         type: string
       skip_npm:

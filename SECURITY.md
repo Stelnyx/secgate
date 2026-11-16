@@ -120,7 +120,7 @@ From the next release, every `vX.Y.Z` tag produces them through
 | Release tarball | `secgate-X.Y.Z.tgz` | Signed build of the npm package |
 | CycloneDX SBOM | `secgate-X.Y.Z.sbom.cdx.json` | Full dependency manifest (CycloneDX 1.5+) |
 | cosign signature | `*.sig`, `*.pem`, `*.cosign.bundle` | Keyless Sigstore signature over tarball and SBOM |
-| SLSA L3 attestation | `secgate-vX.Y.Z.intoto.jsonl` | Non-falsifiable build provenance (SLSA v1.0, Level 3) |
+| SLSA L3 attestation | `secgate-vX.Y.Z.intoto.jsonl` | Non-falsifiable build provenance (SLSA Level 3; predicate type `https://slsa.dev/provenance/v0.2`) |
 | Checksums | `SHA256SUMS` | SHA-256 manifest for tarball + SBOM |
 
 On the same date, `npm view` reported
@@ -130,7 +130,7 @@ npm versions `0.2.9` and `0.2.11` to `0.2.13`, and none for `0.2.14`
 signed tarball to npm with provenance through npm Trusted Publishing. Check a
 version with
 `npm view @stelnyx/secgate@<version> dist.attestations.provenance.predicateType`
-(expected: `https://slsa.dev/provenance/v1`).
+(expected: `https://slsa.dev/provenance/v1`; this is the npm package attestation, while the GitHub Release `.intoto.jsonl` carries `https://slsa.dev/provenance/v0.2`).
 
 ### Trust root (keyless cosign)
 
