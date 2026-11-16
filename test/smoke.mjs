@@ -410,6 +410,28 @@ test("trivy fs exit 1 with valid JSON → error, not clean (#82)", () => {
   assertEq(r.code, 2, "exit");
 });
 
+test("a Dockerfile stage name (FROM base AS production) is not scanned as an image", () => {
+  // `base` names the first stage; `trivy image base` would try to pull an
+  // image called base and fail.
+  const failOnBase = `for a in "$@"; do if [ "$a" = "base" ]; then echo 'FATAL unable to pull image base' >&2; exit 1; fi; done\n${TRIVY_CLEAN}`;
+  const binDir = makeBinDir({ trivy: trivyStub({ image: failOnBase }) });
+  const target = makeTrivyTarget({ dockerfile: false });
+  fs.writeFileSync(
+    path.join(target, "Dockerfile"),
+    'FROM node:20-slim AS base\nRUN echo build\nFROM base AS production\nCMD ["node"]\n'
+  );
+  try {
+    const r = runIsolated(binDir, target);
+    if (!r.rep) throw new Error("report not written");
+    assertEq(r.rep.tools.trivyImage, "clean", "image scan status");
+    assertEq(r.rep.status, "PASS", "status");
+    assertEq(r.code, 0, "exit");
+  } finally {
+    fs.rmSync(binDir, { recursive: true, force: true });
+    fs.rmSync(target, { recursive: true, force: true });
+  }
+});
+
 test("trivy image exit 1 with valid JSON → image error, not clean (#82)", () => {
   const r = runTrivyCase(trivyStub({ image: `${TRIVY_CLEAN}; exit 1` }));
   assertEq(r.rep.tools.trivyImage, "error", "image status");
@@ -511,11 +533,13 @@ test("semgrep: a fatal error in its JSON is an error; a file it could not parse 
   }
 });
 
-test("osv-scanner exit 128 (no package sources found) stays clean (#82)", () => {
+test("osv-scanner exit 128 (no package sources found) is skipped with the reason, never clean", () => {
   const stub = "echo 'No package sources found, --help for usage information.' >&2; exit 128";
   withStubs({ "osv-scanner": stub }, r => {
     if (!r.rep) throw new Error("report not written");
-    assertEq(r.rep.tools.osv, "clean", "osv status");
+    assertEq(r.rep.tools.osv, "skipped", "osv status");
+    assertEq(r.rep.toolSkipReason.osv, "no package sources found", "osv reason");
+    assertEq(r.rep.toolScores.osv, null, "osv is not scored");
   });
 });
 

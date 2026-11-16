@@ -502,9 +502,11 @@ const noScannersRan   = coverage.ran.length === 0;
 const missingRequired = requiredScanners.filter(t => !coverage.ran.includes(t));
 const coverageExit2   = noScannersRan || missingRequired.length > 0;
 // Skips that are not a coverage gap: the user turned the scanner off, or there
-// is nothing for it to scan. Any other skip (not installed, error, timeout,
-// no lockfile) means a scanner that should have run did not.
-const NOT_A_GAP       = new Set(["disabled in config", "no package.json in target"]);
+// is nothing for it to scan (no package.json for npm audit, no lockfile or
+// manifest osv-scanner can read). Any other skip (not installed, error,
+// timeout, a package.json without a lockfile) means a scanner that should
+// have run did not.
+const NOT_A_GAP       = new Set(["disabled in config", "no package.json in target", "no package sources found"]);
 const skipReasonOf    = t => coverageSkipReason(t, toolStatus, toolSkipReason);
 const coverageGaps    = coverage.skipped.filter(t => !NOT_A_GAP.has(skipReasonOf(t)));
 const configDisabled  = disabledByConfig(toolSkipReason);
