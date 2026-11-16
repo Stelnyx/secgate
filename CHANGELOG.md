@@ -6,6 +6,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + [Semantic Ver
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-11-15
+
+### Fixed
+- **osv-scanner that scans nothing is `skipped`, not `clean`.** When
+  osv-scanner finds no lockfile or manifest it can read (exit 128, "No package
+  sources found"), SecGate reported it as `clean` and scored it 100. It is now
+  `skipped` with the reason `no package sources found` and is not scored. Like
+  `no package.json in target` for npm audit, this is not a coverage gap,
+  because there was nothing for it to scan.
+- **A Dockerfile stage name is not scanned as an image.** In a multi-stage
+  Dockerfile, `FROM base AS production` builds on an earlier stage named
+  `base`. SecGate ran `trivy image base`, which failed, so the image scan
+  ended `error` and Trivy counted as not run. A `FROM` that names an earlier
+  stage of the same Dockerfile is no longer scanned as an image.
+
 ## [0.3.1] - 2026-11-15
 
 ### Fixed
@@ -439,7 +454,8 @@ Initial public release to npm as `@stelnyx/secgate`.
 - npm publish with provenance (`--provenance`).
 - Risk scoring and exit code semantics: exit `0` = clean or low/medium only; exit `1` = CRITICAL or HIGH findings present.
 
-[Unreleased]: https://github.com/Stelnyx/secgate/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/Stelnyx/secgate/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/Stelnyx/secgate/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/Stelnyx/secgate/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Stelnyx/secgate/compare/v0.2.13...v0.3.0
 [0.2.13]: https://github.com/Stelnyx/SecGate/compare/v0.2.12...v0.2.13
