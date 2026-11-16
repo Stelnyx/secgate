@@ -20,7 +20,7 @@ import { fileURLToPath } from "url";
 
 const libDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "lib");
 
-const { makeFindingProcessor } = await import(`${libDir}/scanners.mjs`);
+const { compareFindings, makeFindingProcessor } = await import(`${libDir}/scanners.mjs`);
 const { computeScore, computeToolScores } = await import(`${libDir}/score.mjs`);
 const { summarize, resolveStatus, TOOLS } = await import(`${libDir}/report.mjs`);
 const { CONFIG_DEFAULTS } = await import(`${libDir}/config.mjs`);
@@ -224,6 +224,28 @@ test("determinism: without the variables, timestamp is wall-clock", () => {
   assert(Math.abs(Date.now() - t) < 300000, "timestamp is current time");
 });
 fs.rmSync(scan, { recursive: true, force: true });
+
+/* ── compareFindings is a total order, also for odd scanner values ── */
+// Scanners pass locations and paths through unchecked, so null, numeric
+// strings, words and numbers can meet in one key. Every input order must
+// sort to the same list.
+function permutations(list) {
+  if (list.length <= 1) return [list];
+  return list.flatMap((x, i) => permutations([...list.slice(0, i), ...list.slice(i + 1)]).map(p => [x, ...p]));
+}
+test("determinism: compareFindings sorts every input order the same way, whatever the value types", () => {
+  const base = { tool: "semgrep", type: "code", severity: "MEDIUM", signature: "same-rule", message: "m", file: "index.js", col: 1 };
+  const odd = [
+    { ...base, line: null },
+    { ...base, line: "1" },
+    { ...base, line: "unknown" },
+    { ...base, line: 2 },
+    { ...base, line: null, file: 10 },
+    { ...base, line: null, file: "9" }
+  ];
+  const sorted = new Set(permutations(odd).map(p => JSON.stringify([...p].sort(compareFindings))));
+  assertEq(sorted.size, 1, "distinct sort results over all 720 input orders");
+});
 
 /* ── scanner output order does not change the report (demo rehearsal, 2026-11-15) ── */
 // Only stub Semgrep and Trivy are on PATH (Gitleaks and osv-scanner are off in
