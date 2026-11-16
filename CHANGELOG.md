@@ -6,6 +6,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + [Semantic Ver
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-11-16
+
 ### Fixed
 - **The same input lists its findings in the same order.** The scanners run in
   parallel and Trivy does not list its results in a fixed order, so two runs on
@@ -15,6 +17,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + [Semantic Ver
   Findings are now sorted by scanner, file, line, column, rule and image before
   any report is written. Versions up to 0.3.2 have the unstable order.
 
+### Changed
+- The LICENSE copyright holder is now `Daniel Oceno (Stelnyx)`.
+- `SECURITY.md` names the real provenance predicate types: the npm package
+  attestation is SLSA provenance v1, and the GitHub Release `.intoto.jsonl`
+  is v0.2. The release examples in `CONTRIBUTING.md` and the release workflow
+  use `0.3.3`.
 ## [0.3.2] - 2026-11-15
 
 ### Fixed
@@ -463,7 +471,8 @@ Initial public release to npm as `@stelnyx/secgate`.
 - npm publish with provenance (`--provenance`).
 - Risk scoring and exit code semantics: exit `0` = clean or low/medium only; exit `1` = CRITICAL or HIGH findings present.
 
-[Unreleased]: https://github.com/Stelnyx/secgate/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/Stelnyx/secgate/compare/v0.3.3...HEAD
+[0.3.3]: https://github.com/Stelnyx/secgate/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/Stelnyx/secgate/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/Stelnyx/secgate/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Stelnyx/secgate/compare/v0.2.13...v0.3.0
