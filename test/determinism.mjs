@@ -224,6 +224,75 @@ test("determinism: without the variables, timestamp is wall-clock", () => {
   assert(Math.abs(Date.now() - t) < 300000, "timestamp is current time");
 });
 fs.rmSync(scan, { recursive: true, force: true });
+
+/* ── scanner output order does not change the report (demo rehearsal, 2026-11-15) ── */
+// Only stub Semgrep and Trivy are on PATH (Gitleaks and osv-scanner are off in
+// config, npm audit has no package.json). Between the two runs the stubs finish
+// in the opposite order and Trivy lists its two results in the opposite order,
+// as real Trivy did on juice-shop.
+const SEMGREP_OUT = JSON.stringify({
+  results: [{ check_id: "js.eval", path: "index.js", start: { line: 1, col: 1 }, end: { line: 1, col: 9 }, extra: { severity: "WARNING", message: "eval" } }],
+  errors: []
+});
+const misconfig = (id, line) => ({ ID: id, Severity: "MEDIUM", Title: id, CauseMetadata: { StartLine: line, EndLine: line } });
+const trivyOut = list => JSON.stringify({ Results: [{ Target: "main.tf", Misconfigurations: list }] });
+const TRIVY_A = trivyOut([misconfig("AVD-X-0001", 81), misconfig("AVD-X-0002", 74)]);
+const TRIVY_B = trivyOut([misconfig("AVD-X-0002", 74), misconfig("AVD-X-0001", 81)]);
+function orderStubs() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "secgate-det-bin-"));
+  fs.symlinkSync(process.execPath, path.join(dir, "node"));
+  const stubs = {
+    semgrep: `if [ "$SECGATE_TEST_ORDER" = "b" ]; then /bin/sleep 1; fi\nprintf '%s' '${SEMGREP_OUT}'`,
+    trivy: [
+      'if [ "$1" = "image" ]; then echo \'{"Results":[]}\'; exit 0; fi',
+      `if [ "$SECGATE_TEST_ORDER" = "a" ]; then /bin/sleep 1; printf '%s' '${TRIVY_A}'; else printf '%s' '${TRIVY_B}'; fi`
+    ].join("\n")
+  };
+  for (const [name, script] of Object.entries(stubs)) {
+    fs.writeFileSync(path.join(dir, name), `#!/bin/sh\nif [ "$1" = "--version" ]; then echo "${name} 1.0.0"; exit 0; fi\n${script}\n`);
+    fs.chmodSync(path.join(dir, name), 0o755);
+  }
+  return dir;
+}
+test("determinism: scanner completion order and Trivy result order do not change the report", () => {
+  const binDir = orderStubs();
+  const target = fs.mkdtempSync(path.join(os.tmpdir(), "secgate-det-order-"));
+  fs.writeFileSync(path.join(target, "index.js"), "eval(input);\n");
+  fs.writeFileSync(path.join(target, "main.tf"), "resource \"x\" \"y\" {}\n");
+  fs.writeFileSync(path.join(target, ".secgate.config.json"), JSON.stringify({ scanners: { gitleaks: false, osv: false } }));
+  const run = order => {
+    const out = fs.mkdtempSync(path.join(os.tmpdir(), "secgate-det-out-"));
+    const env = { ...process.env, PATH: binDir, SECGATE_TIMESTAMP: "2026-01-01T00:00:00Z", SECGATE_TEST_ORDER: order };
+    delete env.SOURCE_DATE_EPOCH;
+    const r = spawnSync(process.execPath, [bin, target, "--output-dir", out], { encoding: "utf-8", cwd: target, env, timeout: 120000 });
+    const read = ext => {
+      const f = fs.readdirSync(out).find(n => n.endsWith(ext));
+      return f ? fs.readFileSync(path.join(out, f)) : null;
+    };
+    const res = { status: r.status, stderr: r.stderr, json: read(".json"), html: read(".html") };
+    fs.rmSync(out, { recursive: true, force: true });
+    return res;
+  };
+  try {
+    const a = run("a");
+    const b = run("b");
+    assert(a.json && b.json && a.html && b.html, `report files written (exit ${a.status}): ${a.stderr.slice(0, 200)}`);
+    const findings = JSON.parse(a.json.toString()).findings;
+    assertEq(findings.length, 3, "three findings");
+    assertEq(
+      JSON.stringify(findings.map(f => `${f.tool}:${f.line}`)),
+      JSON.stringify(["semgrep:1", "trivy:74", "trivy:81"]),
+      "sorted by scanner, file and line"
+    );
+    assertEq(JSON.stringify(JSON.parse(b.json.toString()).findings), JSON.stringify(findings), "findings JSON identical");
+    assert(a.json.equals(b.json), "JSON reports are byte-identical");
+    assert(a.html.equals(b.html), "HTML reports are byte-identical");
+  } finally {
+    fs.rmSync(binDir, { recursive: true, force: true });
+    fs.rmSync(target, { recursive: true, force: true });
+  }
+});
+
 console.log("-------------------------");
 console.log(`${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);

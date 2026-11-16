@@ -107,12 +107,14 @@ test("gitleaks: extracts file + line + CRITICAL severity", () => {
   const { report } = runWithStubs(d, { gitleaks: readFixture("gitleaks.json") });
   const gl = report.findings.filter(f => f.tool === "gitleaks");
   assertEq(gl.length, 2, "gitleaks finding count");
-  assertEq(gl[0].severity, "CRITICAL", "severity");
-  assertEq(gl[0].file, "src/config/aws.js", "file");
-  assertEq(gl[0].line, 42, "line");
-  assertEq(gl[0].endLine, 42, "endLine");
-  assertEq(gl[0].fixableBy, "manual", "fixableBy");
-  assert(gl[0].fixable === false, "manual fixes should not be flagged fixable");
+  // Findings are sorted by file, so look the fixture's first leak up by its file.
+  const aws = gl.find(f => f.file === "src/config/aws.js");
+  assert(aws, "finding for src/config/aws.js");
+  assertEq(aws.severity, "CRITICAL", "severity");
+  assertEq(aws.line, 42, "line");
+  assertEq(aws.endLine, 42, "endLine");
+  assertEq(aws.fixableBy, "manual", "fixableBy");
+  assert(aws.fixable === false, "manual fixes should not be flagged fixable");
   fs.rmSync(d, { recursive: true, force: true });
 });
 
