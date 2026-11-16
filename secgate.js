@@ -5,7 +5,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 import { loadConfig } from "./lib/config.mjs";
-import { makeFindingProcessor } from "./lib/scanners.mjs";
+import { compareFindings, makeFindingProcessor } from "./lib/scanners.mjs";
 import {
   runGitleaks,
   runSemgrep,
@@ -490,6 +490,10 @@ applyResult("npm",        npmRes);
 applyResult("osv",        osvRes);
 applyResult("trivy",      trivyRes);
 applyResult("trivyImage", trivyImgRes);
+
+// The scanners finish in any order and Trivy lists its results in no fixed
+// order, so sort: the same findings always give the same report.
+findings.sort(compareFindings);
 
 /* ────────────────────────────────────────────────────────────────────────────
    BASELINE

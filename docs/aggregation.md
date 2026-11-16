@@ -21,6 +21,8 @@ Every raw finding from every scanner passes through `makeFindingProcessor` in [`
 
 A finding that survives stages 1–7 always lands in `findings[]`. A finding never appears twice unless its `(tool, signature, file, image, line)` tuple differs.
 
+When every scanner has finished, `findings[]` is sorted with `compareFindings` ([`lib/scanners.mjs`](../lib/scanners.mjs)): scanner, file, line, column, signature, image, then the whole finding. The scanners run in parallel and Trivy does not list its results in a fixed order, so the same findings would otherwise come out in a different order from run to run. The reports, the SARIF file and a written baseline all use the sorted list.
+
 ---
 
 ## Severity tiers (locked)

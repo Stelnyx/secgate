@@ -6,6 +6,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + [Semantic Ver
 
 ## [Unreleased]
 
+### Fixed
+- **The same input lists its findings in the same order.** The scanners run in
+  parallel and Trivy does not list its results in a fixed order, so two runs on
+  the same commit could list the same findings in a different order (on
+  juice-shop two Trivy findings in one Terraform file swapped), and the JSON
+  report differed although the README promises byte-identical findings.
+  Findings are now sorted by scanner, file, line, column, rule and image before
+  any report is written. Versions up to 0.3.2 have the unstable order.
+
 ## [0.3.2] - 2026-11-15
 
 ### Fixed
