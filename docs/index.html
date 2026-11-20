@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#0a0a0a">
 <meta property="og:type" content="website">
 <meta property="og:title" content="SecGate — A single-command security gate for CI/CD">
-<meta property="og:description" content="Five industry-standard scanners. One command. One report. One exit code. 98% scanner noise demoted. No account, no telemetry, MIT.">
+<meta property="og:description" content="Five open-source scanners. One command. One report. One exit code. No account, no telemetry, MIT.">
 <meta property="og:url" content="https://stelnyx.github.io/SecGate/">
 <meta name="twitter:card" content="summary">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath fill='%2300cc66' d='M50 2C54 38 62 46 98 50C62 54 54 62 50 98C46 62 38 54 2 50C38 46 46 38 50 2Z'/%3E%3C/svg%3E">
@@ -151,7 +151,6 @@ pre .k{color:var(--green)}
 
 footer{margin-top:80px;padding-top:28px;border-top:1px solid var(--border);color:var(--faint);font-size:13px}
 footer .line{display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
-footer .siblings a{color:var(--muted)}
 footer .meta{color:var(--faint)}
 
 @media (max-width:600px){
@@ -191,7 +190,7 @@ footer .meta{color:var(--faint)}
     </div>
     <h1>Five scanners.<br>One gate. One <span class="accent">exit code</span>.</h1>
     <p class="lede">SecGate orchestrates <strong>Semgrep, Gitleaks, osv-scanner, Trivy and npm audit</strong> behind a single command. It normalizes their output into one report and fails the pipeline on CRITICAL or HIGH findings.</p>
-    <p class="sub">No account. No telemetry. The report is written to local files. SecGate doesn't ship its own engine — the value is <strong>orchestration, normalization, and one exit code</strong>.</p>
+    <p class="sub">No account. No telemetry. The report is written to local files. SecGate does not ship its own analysis engine. The value is <strong>orchestration, normalization, and one exit code</strong>.</p>
 
     <div class="install" id="install">
       <span class="cmd"><span class="prompt">$ </span><span id="cmd-text">npx @stelnyx/secgate .</span></span>
@@ -218,7 +217,7 @@ footer .meta{color:var(--faint)}
 
 <section id="what">
   <h2>One command. Four artifacts.</h2>
-  <p class="h2-note">SecGate runs whatever scanners are on your <code>$PATH</code> and produces this — every finding traces to a named tool.</p>
+  <p class="h2-note">SecGate runs the scanners it finds on your <code>PATH</code> and produces these files. Every finding traces to a named tool.</p>
   <div class="grid">
     <div class="card">
       <div class="num">01</div>
@@ -228,100 +227,101 @@ footer .meta{color:var(--faint)}
     <div class="card">
       <div class="num">02</div>
       <h3>One HTML report</h3>
-      <p>Per-scanner tabs, dark mode, zero external assets — a single self-contained file.</p>
+      <p>A single file with a dark theme, inline CSS and no JavaScript. Findings are grouped by tool. When opened online, the browser loads the Inter font from Google Fonts.</p>
     </div>
     <div class="card">
       <div class="num">03</div>
       <h3>One SARIF file</h3>
-      <p>SARIF 2.1.0, ready to upload straight to GitHub Code Scanning.</p>
+      <p>SARIF 2.1.0 with <code>--format sarif</code>, ready to upload to GitHub Code Scanning.</p>
     </div>
     <div class="card">
       <div class="num">04</div>
       <h3>One exit code</h3>
-      <p><code>1</code> on CRITICAL or HIGH findings — blocks the pipeline. No babysitting.</p>
+      <p><code>0</code> on pass, <code>1</code> on CRITICAL or HIGH findings, <code>2</code> when the scan is incomplete or no scanner could run.</p>
     </div>
   </div>
 </section>
 
 <section id="noise">
-  <h2>98% of the noise, demoted</h2>
-  <p>The wrapped scanners are each noisy in isolation — industry estimate puts ~70% of raw SAST/SCA output at signal-less. SecGate's job is to surface what's actionable and demote the rest. Dogfooded against a 2,628-file production codebase:</p>
+  <h2>Noise, demoted</h2>
+  <p>The wrapped scanners are noisy on their own. SecGate's job is to surface what is actionable and demote the rest in the HTML report. In one internal dogfood scan of a 2,628-file codebase:</p>
   <div class="noise">
     <div class="col"><div class="big in">1,858</div><div class="lbl">raw findings</div></div>
     <div class="col"><div class="big out">46</div><div class="lbl">actionable findings</div></div>
-    <div class="col"><div class="big pct">98%</div><div class="lbl">noise demoted</div></div>
+    <div class="col"><div class="big pct">97.5%</div><div class="lbl">not actionable</div></div>
   </div>
-  <p style="margin-top:16px">Findings are <strong>never dropped</strong> — demotion is presentation-only and the exit code is unchanged. The default <code>curated</code> profile collapses known-noisy patterns (license rows, base-image LOW/MED CVEs, 5-year-old non-critical CVEs) into an Informational block. Run <code>--profile strict</code> for a full audit view.</p>
+  <p style="margin-top:16px">That run is not reproducible from this repository. Your ratio depends on the codebase.</p>
+  <p style="margin-top:16px">Findings are <strong>never dropped</strong>. Demotion is presentation-only: demoted findings still count for the exit code, the score and the JSON and SARIF output. The default <code>curated</code> profile collapses known-noisy patterns (license findings, base-image LOW/MEDIUM CVEs, old non-critical CVEs, UNKNOWN severity, HTML missing-integrity and a common path-traversal false positive) into an Informational block. Run <code>--profile strict</code> for a full audit view.</p>
 </section>
 
 <section id="score">
   <h2>Security Score</h2>
-  <p class="h2-note">Every run produces a deterministic 0–100 score alongside the binary gate. Sample below.</p>
+  <p class="h2-note">Every run produces a deterministic 0–100 score alongside the binary gate. Sample below, from a scan of <code>test/fixtures/vulnerable-deps</code>.</p>
   <div class="score">
     <div class="head">
-      <span class="n">62</span><span class="d">/ 100 &nbsp;·&nbsp; rule v1</span>
+      <span class="n">54</span><span class="d">/ 100 &nbsp;·&nbsp; rule v1</span>
       <span class="band">Mixed</span>
     </div>
-    <div class="bar-row"><span class="name">Semgrep</span><span class="val">97</span><span class="track"><span class="fill" style="width:97%"></span></span></div>
-    <div class="bar-row"><span class="name">Gitleaks</span><span class="val">75</span><span class="track"><span class="fill warn" style="width:75%"></span></span></div>
+    <div class="bar-row"><span class="name">Semgrep</span><span class="val">100</span><span class="track"><span class="fill" style="width:100%"></span></span></div>
+    <div class="bar-row"><span class="name">Gitleaks</span><span class="val">100</span><span class="track"><span class="fill" style="width:100%"></span></span></div>
     <div class="bar-row"><span class="name">npm audit</span><span class="val">90</span><span class="track"><span class="fill" style="width:90%"></span></span></div>
-    <div class="bar-row"><span class="name">osv-scanner</span><span class="val">100</span><span class="track"><span class="fill" style="width:100%"></span></span></div>
-    <div class="bar-row"><span class="name">Trivy</span><span class="val">62</span><span class="track"><span class="fill bad" style="width:62%"></span></span></div>
+    <div class="bar-row"><span class="name">osv-scanner</span><span class="val">64</span><span class="track"><span class="fill bad" style="width:64%"></span></span></div>
+    <div class="bar-row"><span class="name">Trivy</span><span class="val">100</span><span class="track"><span class="fill" style="width:100%"></span></span></div>
   </div>
-  <p style="margin-top:16px">Penalty per finding: CRITICAL −25 · HIGH −10 · MEDIUM −3 · LOW −1. Thresholds: green ≥ 90, amber ≥ 70, red &lt; 70. The binary gate (exit 1 on CRITICAL/HIGH) is independent — the score is for trend tracking.</p>
+  <p style="margin-top:16px">Penalty per finding: CRITICAL −25 · HIGH −10 · MEDIUM −3 · LOW −1 · UNKNOWN 0. Floor: 0. Color thresholds: green ≥ 90, amber ≥ 70, red &lt; 70. The binary gate (exit 1 on CRITICAL/HIGH) is independent. The score is for trend tracking.</p>
 </section>
 
 <section id="scanners">
   <h2>The five scanners</h2>
-  <p class="h2-note">Missing binaries are skipped gracefully and noted in the report. No scanner is required.</p>
+  <p class="h2-note">Only npm audit runs without extra installs. A scanner that applies but is not installed is listed as a coverage gap: a scan with no blocking findings then ends INCOMPLETE (exit <code>2</code>), not PASS. Opt out of a scanner on purpose with <code>"scanners": { "&lt;name&gt;": false }</code>.</p>
   <table class="tbl">
     <thead><tr><th>Scanner</th><th>Category</th><th>Network</th></tr></thead>
     <tbody>
-      <tr><td><strong>Semgrep</strong></td><td>SAST — static code, 10+ languages, OSS ruleset</td><td><span class="tag local">Local</span></td></tr>
-      <tr><td><strong>Gitleaks</strong></td><td>Secrets — working tree + git history, redacted</td><td><span class="tag local">Local</span></td></tr>
-      <tr><td><strong>npm audit</strong></td><td>SCA — Node dependency tree</td><td><span class="tag net">Network</span></td></tr>
-      <tr><td><strong>osv-scanner</strong></td><td>Polyglot SCA — npm, PyPI, Go, Cargo, Maven, more</td><td><span class="tag net">Network</span></td></tr>
+      <tr><td><strong>Semgrep</strong></td><td>SAST: static code, <code>--config=auto</code> rules from the Semgrep Registry</td><td><span class="tag net">Network</span></td></tr>
+      <tr><td><strong>Gitleaks</strong></td><td>Secrets: committed git history only, redacted</td><td><span class="tag local">Local</span></td></tr>
+      <tr><td><strong>npm audit</strong></td><td>SCA: Node dependency tree</td><td><span class="tag net">Network</span></td></tr>
+      <tr><td><strong>osv-scanner</strong></td><td>Polyglot SCA: npm, PyPI, Go, Cargo, Maven, RubyGems, Packagist, NuGet, Pub</td><td><span class="tag net">Network</span></td></tr>
       <tr><td><strong>Trivy</strong></td><td>IaC + license + base-image CVEs</td><td><span class="tag net">Network</span></td></tr>
     </tbody>
   </table>
-  <p style="margin-top:16px">SecGate itself makes <strong>no network calls</strong> — no telemetry, no phone-home. But three of the five wrapped scanners query advisory databases to do their job. "No telemetry" is exact; "fully air-gapped" is not — run offline and the network scanners degrade or skip, which SecGate reports.</p>
+  <p style="margin-top:16px">SecGate itself makes <strong>no network calls</strong>: no telemetry, no phone-home. Four of the five wrapped scanners need the internet to fetch rules or advisories, and the HTML report links the Inter font from <code>fonts.googleapis.com</code>, so a browser that opens it requests that font. "No telemetry" is exact; "fully air-gapped" is not. Run offline and the network scanners degrade or skip, which SecGate reports. There is no offline mode.</p>
 </section>
 
 <section id="honesty">
-  <h2>What SecGate is — and isn't</h2>
+  <h2>What SecGate is and is not</h2>
   <p>SecGate is a <strong>CI gate</strong>, not a SOC platform, a compliance tool, or a vulnerability-management system.</p>
   <ul class="checks">
-    <li><strong>It is zero-config orchestration.</strong> Five industry-standard scanners, one command, one normalized report, one exit code. MIT.</li>
+    <li><strong>It is zero-config orchestration.</strong> Five open-source scanners, one command, one normalized report, one exit code. MIT.</li>
     <li><strong>It is local-output-only.</strong> The report lands as files on your disk. No account, no dashboard, no hosted state.</li>
-    <li><strong>It is honest about noise.</strong> The curated profile demotes — it never deletes. Suppressed findings get their own audited block with per-rule counts.</li>
-    <li class="no"><strong>It is not a defect oracle.</strong> Every finding originates from one of the five underlying tools — SecGate ships no analysis engine of its own.</li>
-    <li class="no"><strong>It is not SaaS-grade triage.</strong> Need a managed vuln DB, Jira sync, or compliance workflow? Buy Snyk or Aikido — SecGate's niche is the gate.</li>
+    <li><strong>It is honest about noise.</strong> The curated profile demotes and never deletes. Findings suppressed with inline <code>secgate:ignore</code> comments get their own collapsed block with per-rule counts.</li>
+    <li class="no"><strong>It is not a defect oracle.</strong> Every finding originates from one of the five underlying tools. SecGate ships no analysis engine of its own.</li>
+    <li class="no"><strong>It is not SaaS-grade triage.</strong> If you need a managed vulnerability database, Jira sync or a compliance workflow, use a commercial platform. SecGate's niche is the gate.</li>
   </ul>
 </section>
 
 <section id="ci">
   <h2>Drop it into CI</h2>
-  <p>Exit <code>1</code> on CRITICAL or HIGH findings blocks the pipeline. One line:</p>
+  <p>Exit <code>1</code> on CRITICAL or HIGH findings, or <code>2</code> on an incomplete scan, blocks the pipeline. Install the scanners you want on the runner first. One line:</p>
   <pre><span class="c"># .github/workflows/secgate.yml</span>
 - name: Run SecGate
   <span class="k">run:</span> npx @stelnyx/secgate .
-  <span class="c"># exits 1 on CRITICAL or HIGH findings — blocks the pipeline</span></pre>
-  <p style="margin-top:14px">A composite GitHub Action is published at <code>Stelnyx/SecGate/.github/actions/secgate@main</code> — emits JSON, HTML and SARIF, and exposes a <code>sarif-path</code> output for direct upload to Code Scanning. Adopt on a legacy repo with the baseline workflow: <code>--update-baseline</code> once, then <code>--baseline</code> fails only on net-new findings.</p>
+  <span class="c"># exits 1 on CRITICAL or HIGH findings, 2 on an incomplete scan</span></pre>
+  <p style="margin-top:14px">A composite GitHub Action is published at <code>Stelnyx/SecGate/.github/actions/secgate@main</code> (pin a full commit SHA in production). It emits JSON and HTML, plus SARIF when <code>format</code> includes <code>sarif</code>, and exposes a <code>sarif-path</code> output for upload to Code Scanning. Adopt on a legacy repo with the baseline workflow: <code>--update-baseline</code> once, then <code>--baseline</code> fails only on net-new findings.</p>
 </section>
 
 <section id="faq" class="faq">
   <h2>Common questions</h2>
   <dl>
     <dt>Does my code leave my machine?</dt>
-    <dd>SecGate itself makes no network calls and writes the report locally. But npm audit, osv-scanner and Trivy query advisory databases — they send dependency manifests / image coordinates, not your source. On first run, osv-scanner and Trivy may download vulnerability databases; SecGate prints a note before those scanners start. Air-gapped CI runs SecGate fine; those three scanners degrade or skip and SecGate reports it.</dd>
+    <dd>SecGate itself makes no network calls and writes the report locally. Semgrep downloads its rules from the Semgrep Registry. npm audit, osv-scanner and Trivy query advisory databases with dependency data or image coordinates; Trivy also pulls image layers for image scans. On first run, osv-scanner and Trivy may download vulnerability databases; SecGate prints a note before those scanners start. Offline, those four scanners degrade or skip and SecGate reports it, so the scan can end INCOMPLETE (exit <code>2</code>).</dd>
     <dt>Is it deterministic?</dt>
-    <dd>Yes. Same findings produce JSON-byte-identical output, score and gate status every run. Two test suites lock the contract — <code>determinism.mjs</code> and an 11-finding <code>golden-secgate.mjs</code> fixture.</dd>
+    <dd>Yes. The same inputs produce JSON-byte-identical findings, score and gate status every run. Report files embed a timestamp; set <code>SECGATE_TIMESTAMP</code> or <code>SOURCE_DATE_EPOCH</code> to pin it. Scanner versions and rule databases are not pinned by SecGate. Two test suites lock the contract: <code>determinism.mjs</code> and an 11-finding <code>golden-secgate.mjs</code> fixture.</dd>
     <dt>What do I need installed?</dt>
-    <dd>Node ≥ 18. The external scanners are optional — install only the ones you want (<code>brew install semgrep gitleaks osv-scanner trivy</code>). Missing binaries are skipped and noted.</dd>
+    <dd>Node ≥ 18. npm audit ships with Node.js. The other four scanners are separate installs on your <code>PATH</code> (<code>brew install semgrep gitleaks osv-scanner trivy</code> on macOS). A missing scanner shows as <code>n/a</code> and, when it applies, makes a scan without blocking findings end INCOMPLETE (exit <code>2</code>). Disable scanners you do not want in <code>.secgate.config.json</code>.</dd>
     <dt>Can it handle large workspaces?</dt>
     <dd>SecGate is designed for one project target. It performs a bounded preflight walk, skips dependency/VCS/build/vendor directories, skips symlinks, and exits clearly if a target looks like a multi-project workspace unless <code>--allow-workspace</code> is supplied.</dd>
     <dt>Will it overwhelm me with findings on a legacy repo?</dt>
-    <dd>No. The curated profile demotes ~98% of scanner noise to a collapsed Informational block, and the baseline workflow lets you accept the current state and fail only on net-new findings.</dd>
+    <dd>The curated profile moves known-noisy patterns to a collapsed Informational block in the HTML report, and the baseline workflow (<code>--update-baseline</code> once, then <code>--baseline</code>) lets you accept the current state and fail only on net-new findings.</dd>
     <dt>What does it cost?</dt>
     <dd>Nothing. MIT licensed, published on npm. <code>npx @stelnyx/secgate .</code> and you're done.</dd>
   </dl>
@@ -329,7 +329,7 @@ footer .meta{color:var(--faint)}
 
 <section id="start">
   <h2>Gate your pipeline now</h2>
-  <p>No install, no signup, no config required. Point it at a directory.</p>
+  <p>No signup, no config required. Point it at a directory.</p>
   <div class="install" style="margin-top:8px">
     <span class="cmd"><span class="prompt">$ </span>npx @stelnyx/secgate .</span>
   </div>
@@ -340,11 +340,6 @@ footer .meta{color:var(--faint)}
 </section>
 
 <footer>
-  <div class="line siblings">
-    <span class="meta">Part of the Stelnyx line:</span>
-    <span class="self" style="color:var(--green)">SecGate</span>
-    <a href="https://github.com/Stelnyx/ApiGate">ApiGate</a>
-  </div>
   <div class="meta">SecGate is open source under the MIT license · <a href="https://github.com/Stelnyx/SecGate">github.com/Stelnyx/SecGate</a> · Report vulnerabilities via <a href="https://github.com/Stelnyx/SecGate/blob/main/SECURITY.md">SECURITY.md</a> · A <a href="https://stelnyx.com">Stelnyx</a> project</div>
 </footer>
 

@@ -1,7 +1,6 @@
 # Design parity
 
-SecGate shares its report look with the other Stelnyx products through the
-public npm package
+SecGate gets its report look from the public npm package
 [`@stelnyx/report-theme`](https://www.npmjs.com/package/@stelnyx/report-theme)
 (`^0.1.4` in `package.json`). The theme package owns the CSS, the sidebar
 shell, the score hero, the KPI grid, the scanner list, the findings table and
