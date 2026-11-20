@@ -21,9 +21,23 @@ One command. One report. One exit code.
 
 ---
 
-**SecGate** orchestrates five industry-standard security scanners — **Semgrep, Gitleaks, osv-scanner, Trivy, and npm audit** — behind a single command. It normalizes their output into one report and fails the pipeline on CRITICAL or HIGH findings. No account. No telemetry. No data leaves your machine — except for the vulnerability lookups the wrapped scanners perform (see [Network access](#network-access)).
+**SecGate** orchestrates five security scanners (**Semgrep, Gitleaks, osv-scanner, Trivy, and npm audit**) behind a single command. It normalizes their output into one report and fails the pipeline on CRITICAL or HIGH findings. No account and no telemetry. SecGate itself sends nothing over the network; the wrapped scanners fetch rules and advisories, and the HTML report links Google Fonts (see [Network access](#network-access)).
 
-**Honest positioning.** SecGate is a **triage accelerator**, not a defect oracle. Dogfooded against a 2,628-file production codebase: **1,858 → 46 actionable findings — 98% noise demoted**. The wrapped scanners are each noisy in isolation (industry estimate: ~70% of raw SAST/SCA output is signal-less). SecGate's job is to surface what's actionable and demote the rest — see [What we demote (and why)](#what-we-demote-and-why).
+```mermaid
+flowchart LR
+  T[Target directory] --> SG[SecGate CLI]
+  C[.secgate.config.json] --> SG
+  SG --> S[Semgrep, Gitleaks, npm audit, osv-scanner, Trivy]
+  S --> SG
+  SG --> J[secgate-v7-report.json]
+  SG --> H[repo.html]
+  SG --> F[repo.sarif.json]
+  SG --> E[Exit code 0 / 1 / 2]
+```
+
+How it works inside: [`ARCHITECTURE.md`](ARCHITECTURE.md).
+
+**Positioning.** SecGate is a **triage accelerator**, not a defect oracle. The wrapped scanners are noisy on their own. SecGate's job is to surface what's actionable and demote the rest in the HTML report; see [What we demote (and why)](#what-we-demote-and-why).
 
 **Status.** Early release (`v0.3.3`). From `v0.3.0` on, the tag-triggered release workflow publishes to npm with provenance and creates the signed GitHub Release; `v0.2.14` was published to npm without provenance and without a GitHub Release. Report vulnerabilities via [SECURITY.md](SECURITY.md).
 
@@ -52,7 +66,7 @@ Security Score: 54 / 100   ███████████░░░░░░�
 
 Real output of `node secgate.js test/fixtures/vulnerable-deps`, run from the repository root at commit `edea720` on 2026-11-15 with Semgrep 1.157.0, Gitleaks 8.30.1, osv-scanner 2.3.5, Trivy 0.70.0 and npm 11.19.1. The fixture pins `lodash` 4.17.15. Scores change when the scanners or their rule and vulnerability databases change.
 
-Penalty per finding: CRITICAL −25 · HIGH −10 · MEDIUM −3 · LOW −1 · INFO/UNKNOWN 0. Floor: 0. Color thresholds: green ≥ 90, amber ≥ 70, red < 70. The binary gate (exit 1 on CRITICAL/HIGH) is unchanged. `securityScore` and `toolScores` are also written to `secgate-v7-report.json` for CI dashboards and trend tracking.
+Penalty per finding: CRITICAL −25 · HIGH −10 · MEDIUM −3 · LOW −1 · UNKNOWN 0 (scanner `INFO`/`NOTE` severities are normalized to LOW). Floor: 0. Color thresholds: green ≥ 90, amber ≥ 70, red < 70. The binary gate (exit 1 on CRITICAL/HIGH) is unchanged. `securityScore` and `toolScores` are also written to `secgate-v7-report.json` for CI dashboards and trend tracking.
 
 ---
 
@@ -62,7 +76,7 @@ Penalty per finding: CRITICAL −25 · HIGH −10 · MEDIUM −3 · LOW −1 · 
 npx @stelnyx/secgate .
 ```
 
-Runs every scanner it finds on your `PATH` against the current directory, writes a JSON report, a self-contained HTML report, and (optionally) SARIF. Exit `0` on clean, `1` on CRITICAL/HIGH findings, `2` when no scanner could run.
+Runs every scanner it finds on your `PATH` against the current directory, writes a JSON report, a single-file HTML report, and (optionally) SARIF. Exit `0` on clean, `1` on CRITICAL/HIGH findings, `2` when the scan is incomplete (a scanner that applies did not run) or no scanner could run.
 
 Without extra installs only **npm audit** runs (it ships with Node.js, and needs a `package.json` plus lockfile in the target). **Semgrep, Gitleaks, osv-scanner and Trivy** run only when they are installed and on `PATH` — see [Prerequisites](#prerequisites). Missing scanners are listed in a `WARNING: N of 5 scanners ran` line and shown as `n/a`, never as a pass.
 
@@ -73,7 +87,7 @@ Without extra installs only **npm audit** runs (it ships with Node.js, and needs
 SecGate wraps five existing open-source scanners, runs them against a directory, and produces:
 
 - **One normalized JSON report** across every scanner
-- **One self-contained HTML report** with per-scanner tabs, dark mode, zero external assets
+- **One single-file HTML report** (dark theme, inline CSS, no JavaScript; fonts load from Google Fonts when online)
 - **One SARIF 2.1.0 file** ready for GitHub Code Scanning upload
 - **One exit code** — `1` when CRITICAL or HIGH findings are present; blocks CI
 
@@ -85,19 +99,19 @@ SecGate does not ship its own analysis engine. Every finding originates from one
 
 | Scanner       | Category                  | Notes                                                                 |
 |---------------|---------------------------|-----------------------------------------------------------------------|
-| **Semgrep**   | SAST (static code)        | OSS ruleset. 10+ languages. Extend via `customSemgrepRules`. **Downloads its rules from the Semgrep Registry (network).** |
+| **Semgrep**   | SAST (static code)        | `--config=auto` rules. Extend via `customSemgrepRules`. **Downloads its rules from the Semgrep Registry (network).** |
 | **Gitleaks**  | Secrets & credentials     | Git history only: the committed changes of the repository that contains the target. Uncommitted files are not scanned, and a target outside a git repository is skipped. Secrets redacted. Local. |
 | **npm audit** | Node dependencies (SCA)   | Runs when `package.json` present. **Queries the npm registry advisory API (network).** |
 | **osv-scanner** | Polyglot SCA            | npm, PyPI, Go, Cargo, Maven, RubyGems, Packagist, NuGet, Pub. **Queries the OSV.dev API (network).** |
 | **Trivy**     | IaC + License + Image     | Terraform, Kubernetes, Dockerfile, CloudFormation. Base-image CVEs. **Downloads its vuln DB; pulls image layers for image scans (network).** |
 
-Missing scanner binaries are **skipped gracefully** and noted in the report. No scanner is required; SecGate uses whatever is on `$PATH`.
+A missing scanner binary is skipped and listed in the report, but it is a coverage gap: a scan with no blocking findings then ends `INCOMPLETE` (exit `2`), not `PASS`. Set `"scanners": { "<name>": false }` to opt out of a scanner on purpose.
 
 ---
 
 ## Network access
 
-SecGate itself makes **no network calls** — no telemetry, no account, no phone-home, and the report is written to local files. But four of the five wrapped scanners need the internet to do their job:
+SecGate's own code makes **no network calls**: no telemetry, no account, no phone-home, and the report is written to local files. Two exceptions: four of the five wrapped scanners need the internet, and the HTML report links the Inter font from `fonts.googleapis.com` (via `@stelnyx/report-theme`), so a browser that opens it requests that font.
 
 | Scanner | Network use |
 |---------|-------------|
@@ -107,7 +121,7 @@ SecGate itself makes **no network calls** — no telemetry, no account, no phone
 | osv-scanner | Queries the OSV.dev API for advisories matching your dependency manifests. |
 | Trivy | Downloads/updates its vulnerability database; pulls image layers when scanning container images. |
 
-So "no telemetry" is exact; "fully air-gapped" is not — run SecGate offline and Semgrep, `npm audit`, `osv-scanner`, and `Trivy` will degrade or skip (which SecGate reports). On first run, `osv-scanner` and Trivy may download vulnerability databases; SecGate prints a one-line note before starting those scanners so the initial delay is not mistaken for a hang. A first-class offline mode (skip the network scanners, or point them at a local DB mirror) is tracked in the issue backlog.
+So "no telemetry" is exact; "fully air-gapped" is not — run SecGate offline and Semgrep, `npm audit`, `osv-scanner`, and `Trivy` will degrade or skip (which SecGate reports). On first run, `osv-scanner` and Trivy may download vulnerability databases; SecGate prints a one-line note before starting those scanners so the initial delay is not mistaken for a hang. There is no offline mode.
 
 ---
 
@@ -115,21 +129,21 @@ So "no telemetry" is exact; "fully air-gapped" is not — run SecGate offline an
 
 The HTML report has **two confidence profiles**:
 
-- **`curated` (default)** — actionable findings render inline. Known-noisy patterns get demoted to a collapsed **Informational** block. The exit code (`0`/`1`) is **unchanged** — demotion is presentation-only, not policy.
+- **`curated` (default)** — actionable findings render inline. Known-noisy patterns get demoted to a collapsed **Informational** block. Demotion is presentation-only: demoted findings still count for `failOn`, the exit code, the score and the JSON/SARIF output.
 - **`strict`** — every finding renders inline with no demotion. Use for compliance audits or when tuning the curated rule list.
 
 Curated profile demotes:
 
 | Pattern | Why demoted |
 |---------|-------------|
-| **License findings** (`type: license` from Trivy) | Trivy flags every dep license (MIT, Apache-2.0, LGPL, etc.) as a finding. License posture is governance/legal, not security — belongs in its own pane, not next to CVEs. |
+| **License findings** (`type: license` from Trivy) | License posture is governance/legal, not security. Trivy's license severity still applies to `failOn`, so a license Trivy rates HIGH or CRITICAL fails the gate. |
 | **Trivy base-image OS CVEs at LOW/MEDIUM** (`scanMode: image` or `signature: trivy-image:*`) | Rarely reachable from a Node/Python/Go app runtime (`apt-secure`, `libtinfo`, `perl-base`). CRITICAL/HIGH still surface inline. |
-| **CVEs >5 years old**, severity != CRITICAL | If upstream hasn't shipped a fix in 5+ years, exploitability is bounded. |
+| **CVE IDs from a year before the current year minus 5**, severity != CRITICAL | Old and still unfixed upstream usually means bounded exploitability. |
 | **`UNKNOWN` severity** findings | Scanner couldn't classify — surfaced for audit, not blocked. |
-| **`html.security.audit.missing-integrity`** | Fires on every `<script src>` without an SRI hash, including inline favicon SVGs. Real CDN-MITM risk is covered by HSTS / COEP on most modern stacks. |
-| **`path-join-resolve-traversal`** Semgrep rule | Common false positive in CLI tools that legitimately resolve user-supplied paths against a known root. |
+| **`html.security.audit.missing-integrity*`** | Fires on every `<script src>` without an SRI hash, including inline favicon SVGs. |
+| **`javascript.lang.security.audit.path-traversal.path-join-resolve-traversal*`** | Common false positive in CLI tools that legitimately resolve user-supplied paths against a known root. |
 
-**Real-world impact:** dogfood scan of a 2,628-file CirrusTranslate codebase: `1858 → 46` actionable findings (98% noise demoted). Of the 46: 2 CRITICAL + 36 HIGH + 8 LOW. Triageable in one sitting instead of a wall of license rows + base-image CVEs.
+In one internal dogfood scan of a 2,628-file codebase, the curated profile left 46 of 1,858 findings actionable. That run is not reproducible from this repository; your ratio depends on the codebase.
 
 Findings are **never dropped** by curated demotion — they're re-classified for display ordering. Suppressed findings (inline `# secgate:ignore` comments) get their own collapsed block with per-rule counts for audit trail.
 
@@ -259,13 +273,13 @@ exits with a clear message unless `--allow-workspace` is supplied.
 
 A scanner "applies" unless it is disabled in the config (`"scanners": { "<name>": false }`,
 the explicit opt-out), or it has nothing to scan (npm audit with no
-`package.json`). When a scanner that applies is not installed, times out, or
-fails in a way SecGate detects (unparsable output, a failed Trivy image pull),
+`package.json`, osv-scanner with no lockfile or manifest it can read). When a
+scanner that applies is not installed, times out, exits with a failure code,
+or fails in a way SecGate detects (unparsable output, a failed Trivy image
+pull, Gitleaks outside a git repository, npm audit without a lockfile),
 SecGate does not report PASS. Trivy counts as ran only when its filesystem scan
 ran and its image scan did not fail; an image scan with no Dockerfile or no
-`FROM` image to scan is not applicable and is not a gap. Known gap
-([#82](https://github.com/Stelnyx/SecGate/issues/82)): Gitleaks and osv-scanner
-runs that fail but print nothing on stdout are still counted as clean.
+`FROM` image to scan is not applicable and is not a gap.
 Blocking findings from the
 scanners that ran still give FAIL (exit `1`); otherwise the status is
 `INCOMPLETE` (exit `2`). SecGate prints `WARNING: N of 5 scanners ran` on stderr
@@ -316,7 +330,8 @@ Limits:
 
 **Hardening already in place:**
 
-- Every npm invocation under `--apply` passes `--ignore-scripts` — malicious `preinstall` / `postinstall` scripts in the target's `package.json` (or its dependencies) are **not executed**.
+- Every npm invocation under `--apply` passes `--ignore-scripts` (and sets `npm_config_ignore_scripts=true`), so `preinstall` / `postinstall` scripts in the target's `package.json` or its dependencies are **not executed**.
+- `--apply` never auto-fixes CRITICAL findings; they go to `remediation.blocked`.
 - `--apply` is **gated**: refuses to run unless `SECGATE_CONFIRM_APPLY=1` is set (CI / non-interactive) or the user types `y` at an interactive TTY prompt.
 - Every `--apply` execution is recorded in the report's `auditLog` field and mirrored to stderr with timestamp and target.
 
@@ -345,14 +360,22 @@ Create `.secgate.config.json` in your scan target directory. All fields are opti
     "trivy": false
   },
   "severityOverrides": [
-    { "rule": "npm-audit.lodash", "severity": "LOW" },
-    { "rule": "trivy-DS*", "severity": "MEDIUM" }
+    { "rule": "lodash", "severity": "LOW" },
+    { "rule": "DS*", "severity": "MEDIUM" }
   ],
-  "ignore": ["CVE-2024-12345", "npm:some-old-package*"],
+  "ignore": ["*CVE-2024-12345", "npm:some-old-package@*"],
+  "excludePaths": ["test/fixtures/**"],
   "baselineFile": ".secgate-baseline.json",
   "customSemgrepRules": "./rules/"
 }
 ```
+
+Patterns match the finding `signature`, whose shape depends on the scanner:
+npm audit uses the package name (`lodash`), osv-scanner
+`<ecosystem>:<package>@<advisory>` (`npm:lodash@GHSA-...`), Trivy fs
+`<check ID>:<file>` (`DS002:Dockerfile`), Trivy image
+`trivy-image:<image>:<CVE>`, Semgrep and Gitleaks their rule ID. Copy
+signatures from a dry run's JSON report.
 
 A fully-commented example config lives at [`.secgate.config.example.json`](.secgate.config.example.json) — copy into your repo as `.secgate.config.json` and edit.
 
@@ -367,6 +390,7 @@ JSON Schema: [`docs/config.schema.json`](docs/config.schema.json)
 | `scanners`           | `object`        | all `true`                 | Set any scanner to `false` to skip it                                       |
 | `severityOverrides`  | `array`         | `[]`                       | Override severity for matching signatures (glob `*` supported)              |
 | `ignore`             | `string[]`      | `[]`                       | Drop findings whose signature matches (glob `*` supported)                  |
+| `excludePaths`       | `string[]`      | `[]`                       | Drop findings whose file matches (glob `*`, relative to target). Applied after the scanners run |
 | `baselineFile`       | `string`        | `.secgate-baseline.json`   | Path to baseline file (relative to target)                                  |
 | `customSemgrepRules` | `string\|null` | `null`                     | Extra `--config=<path>` passed to semgrep                                   |
 | `requireScanners`    | `string[]`      | `[]`                       | Scanners that must run (`semgrep`, `gitleaks`, `npm`, `osv`, `trivy`); exit `2` if one did not. A non-array value or an unknown name also exits `2`. `--require` overrides it |
@@ -391,7 +415,7 @@ secgate . --update-baseline
 secgate . --baseline
 ```
 
-Commit `.secgate-baseline.json` to your repo. Baselined findings appear in reports with a `baseline` marker and are excluded from the fail-gate.
+Commit `.secgate-baseline.json` to your repo. A finding matches the baseline when its `signature`, `file` and `line` all match. Baselined findings appear in reports with `baseline: true` and are excluded from the fail-gate and `riskScore`; they still count in `securityScore` and `summary`.
 
 ### Inline suppression
 
@@ -407,7 +431,7 @@ db.execute(sql); // secgate:ignore my.rule.id
 dangerousCall();
 ```
 
-Suppressed findings are excluded from counters. The report's `suppressions` section records per-rule counts for audit.
+Suppressed findings are excluded from counters. The report's `suppressions` section records per-rule counts for audit. Suppression works only for findings with a file inside the target and a line number, so npm audit and osv-scanner findings cannot be suppressed inline; use `ignore` for those.
 
 ---
 
@@ -491,7 +515,7 @@ exit 2.
 
 | Output        | Description                                                   |
 |---------------|---------------------------------------------------------------|
-| `report-path` | Path to `secgate-v7-report.json`                              |
+| `report-path` | Path to `secgate-v7-report.json`, relative to the workspace. Correct only when `target` is `.` ([#87](https://github.com/Stelnyx/SecGate/issues/87)) |
 | `sarif-path`  | Path to `<repo>.sarif.json` (set only when format includes SARIF) |
 
 **Pin to a full commit SHA** for production workflows:
@@ -534,7 +558,7 @@ secgate . --format sarif             # also writes JSON + HTML
 
 ### SARIF structure
 
-- One `runs[]` entry per scanner: `semgrep`, `gitleaks`, `npm`, `osv`, `trivy`, `trivyImage` (6 total).
+- One `runs[]` entry per scanner: `semgrep`, `gitleaks`, `npm`, `osv`, `trivy`, `trivyImage` (6 total). Base-image findings carry tool `trivy`, so they appear in the `trivy` run and the `trivyImage` run has no results.
 - A run has `properties.disabledByConfig: true` when the scanned repo's config turned that scanner off (`trivyImage` follows `trivy`).
 - Each finding maps to a `result` with `ruleId = signature`, `level` derived from severity, and `locations[].physicalLocation` when file/line data is present.
 - `properties["security-severity"]` carries a CVSS-style score for GitHub's sort order: `CRITICAL = 9.5`, `HIGH = 7.5`, `MEDIUM = 5`, `LOW = 2`, `UNKNOWN = 0`.
@@ -561,14 +585,14 @@ secgate . --format sarif             # also writes JSON + HTML
 Each run writes:
 
 - **`secgate-v7-report.json`** — machine-readable, schema below.
-- **`<repo-name>.html`** — self-contained HTML report with per-scanner tabs, dark mode, zero external assets. Filename derived from the target directory name.
+- **`<repo-name>.html`** — single-file HTML report (inline CSS, no JavaScript, Google Fonts link). Filename derived from the target directory name.
 - **`<repo-name>.sarif.json`** — SARIF 2.1.0 file (only when `--format sarif` is passed).
 
 ### JSON schema
 
 ```json
 {
-  "version": "0.2.13",
+  "version": "0.3.3",
   "timestamp": "ISO 8601",
   "target": "/absolute/path",
   "mode": "dry-run | apply",
@@ -601,8 +625,8 @@ Each run writes:
   },
   "findings": [
     {
-      "tool": "gitleaks | semgrep | npm | osv | trivy | trivyImage",
-      "type": "secret | code | dependency | iac | license",
+      "tool": "gitleaks | semgrep | npm | osv | trivy | secgate",
+      "type": "secret | code | dependency | iac | license | policy",
       "severity": "CRITICAL | HIGH | MEDIUM | LOW | UNKNOWN",
       "signature": "rule or package ID",
       "message": "description",
@@ -644,6 +668,8 @@ Each run writes:
 }
 ```
 
+Also present: `toolSkipReason` (scanner → reason), `suppressions` (`{ count, byRule }`), `baselineDiff` (`{ netNew, baselineMatchedCount }`, with `--baseline`), `ignoredTargetPolicy` (with `--ignore-target-policy`), and per finding `scanMode`/`image` (Trivy image) and `baseline` (with `--baseline`). The `secgate` tool emits one finding, `no-lockfile` (type `policy`).
+
 ### Severity tiers
 
 Every finding is normalized to one of five tiers at the `addFinding()` ingress:
@@ -668,15 +694,15 @@ Every finding is normalized to one of five tiers at the `addFinding()` ingress:
 |-------------|------------------------------------------------------------------------------|
 | `ran`       | Tool executed, findings present                                              |
 | `clean`     | Tool executed, no findings                                                   |
-| `skipped`   | Tool not installed, or target not applicable (no `package.json`, no lockfile)|
-| `error`     | Tool produced output that could not be parsed — re-run with `--debug`        |
+| `skipped`   | Disabled in config, not installed, or nothing to scan (no `package.json`, no lockfile, no package sources, not a git repository, no Dockerfile for `trivyImage`); reason in `toolSkipReason` |
+| `error`     | Tool failed to start, was killed, timed out, exited with a failure code, or produced output that could not be parsed — re-run with `--debug` |
 | `pending`   | Tool did not run (should not appear in final reports)                        |
 
 ---
 
 ## Risk scoring
 
-Findings are scored with static weights applied at ingress:
+Findings are weighted by severity in `analyze()` (`lib/intelligence.mjs`):
 
 | Severity | Weight |
 |----------|:------:|
@@ -685,7 +711,7 @@ Findings are scored with static weights applied at ingress:
 | MEDIUM   | 3      |
 | LOW      | 1      |
 
-The `riskScore` in the report is the sum of these weights across all findings. This is a **heuristic count**, not CVSS, not EPSS, not exploit-probability modeling. Use it to compare runs of the same repo over time — not as an absolute posture score.
+The `riskScore` in the report is the sum of these weights across all findings not matched by the baseline (UNKNOWN weighs 0). This is a **heuristic count**, not CVSS, not EPSS, not exploit-probability modeling. Use it to compare runs of the same repo over time — not as an absolute posture score.
 
 > **Note — two scores, two purposes.** `riskScore` (here) is an unbounded raw weight kept for backward compatibility with early CI dashboards. The user-facing **[Security Score](#security-score)** (0–100) at the top of this README is the deterministic 0–100 posture metric introduced in `v0.2.x` and is the one to surface in new dashboards.
 
@@ -695,6 +721,7 @@ The `riskScore` in the report is the sum of these weights across all findings. T
 
 | Doc                                                    | What's in it                                                                   |
 |--------------------------------------------------------|--------------------------------------------------------------------------------|
+| [`ARCHITECTURE.md`](ARCHITECTURE.md)                   | Module map, run pipeline, gate logic, scanner invocation, data types           |
 | [`CHANGELOG.md`](CHANGELOG.md)                         | Version history — Added / Changed / Fixed / Security per release               |
 | [`OPEN-CORE.md`](OPEN-CORE.md)                         | OSS core boundary and paid extension roadmap                                   |
 | [`docs/aggregation.md`](docs/aggregation.md)           | Aggregation pipeline contract: pipeline stages, score formula, gate rule       |
@@ -716,11 +743,11 @@ SecGate is the open-source input layer for a broader security workflow. The **co
 
 ## Tiers (planned)
 
-> **Status:** today's CLI is MIT, single tier — `npx @stelnyx/secgate .` runs the full scan, no flags, no gates. The table below is the planned tier model that aligns SecGate with LuxScope and LuxFaber ([stelnyx.com](https://stelnyx.com)) — same engine at every tier, paid tiers add presentation, persistence, and governance. **`recon` ships today.** `standard` / `enterprise` arrive when the hosted-link service lands.
+> **Status:** today's CLI is MIT, single tier — `npx @stelnyx/secgate .` runs the full scan, no flags, no gates. The table below is the planned tier model: same engine at every tier, paid tiers add presentation, persistence, and governance. **`recon` ships today.** `standard` / `enterprise` arrive when the hosted-link service lands.
 
 | Tier | Scanners | Findings | HTML report | Hosted shareable link | Branded cover | Trend storage |
 |---|---|---|---|---|---|---|
-| **recon** | all 5 (Semgrep · Gitleaks · npm audit · osv-scanner · Trivy) | all (curated + strict profiles) | yes (self-contained) | no | no | no |
+| **recon** | all 5 (Semgrep · Gitleaks · npm audit · osv-scanner · Trivy) | all (curated + strict profiles) | yes (single file) | no | no | no |
 | **standard** | all 5 | all | yes | yes (persistent URL) | no | yes (per-repo history) |
 | **enterprise** | all 5 + custom rule packs | all | yes | yes | yes (logo, client, accent color) | yes (org-wide rollup) |
 

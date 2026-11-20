@@ -29,14 +29,14 @@ SecGate's value is orchestration. The stack of upstream scanners defines what Se
 ### Positive
 
 - Every category covered by a mature, widely adopted tool.
-- All five are free for commercial use (Apache 2.0 / MIT / LGPL rules).
+- All five are free for commercial use (Gitleaks MIT; osv-scanner and Trivy Apache 2.0; Semgrep engine LGPL-2.1). Semgrep-maintained registry rules, which `--config=auto` downloads, are under the [Semgrep Rules License v1.0](https://semgrep.dev/legal/rules-license) and limited to internal use.
 - Each is individually installable via Homebrew / pip / curl-install scripts.
 - JSON output is stable and documented for all five.
 - Defense in depth: npm audit + osv-scanner both cover Node dependencies from different advisory sources.
 
 ### Negative
 
-- Five binaries to install. Mitigated by graceful skip when absent, documented install commands, and Homebrew Bundle / Dockerfile examples.
+- Five binaries to install. Mitigated by install hints printed per missing scanner and documented install commands. Since `v0.3.0` a missing scanner that applies is a coverage gap (`INCOMPLETE`, exit 2), not a silent skip.
 - Base-image scanning is covered by discovering Dockerfile `FROM` references and running Trivy `image` mode. SecGate still does not build and scan final application image layers.
 - Semgrep's OSS ruleset is narrower than Semgrep Pro — organizations wanting proprietary rules need to BYO.
 

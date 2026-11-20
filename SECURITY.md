@@ -17,9 +17,9 @@ If you discover a security vulnerability in SecGate, please report it privately.
 
 ### PGP Key
 
-**Status: not yet generated (tracked in issue #34).** Encrypted email is unavailable until the key is published. Use the GitHub Security Advisory channel for fully private reporting.
+**Status: not available.** There is no PGP key for this address yet, so encrypted email is unavailable. Use the GitHub Security Advisory channel for fully private reporting.
 
-Once generated, the key fingerprint and `pgp-public.asc` will be committed to the repo root and this section updated.
+When a key is generated, its fingerprint and `pgp-public.asc` will be committed to the repo root and this section updated.
 
 ### Include in your report
 
@@ -112,8 +112,10 @@ State as checked on 2026-11-12 with `gh release list`, `gh release view` and
 - `0.2.14` is on npm, but the repository has no `v0.2.14` tag and no GitHub
   Release, so it has none of these assets.
 
-From the next release, every `vX.Y.Z` tag produces them through
-`.github/workflows/release.yml`.
+From `v0.3.0`, every `vX.Y.Z` tag produces them through
+`.github/workflows/release.yml`. Checked on 2026-11-20 with `gh release view`
+and `npm view`: `v0.3.0` to `v0.3.3` have GitHub Releases, and `v0.3.3` carries
+every asset below with npm provenance predicate `https://slsa.dev/provenance/v1`.
 
 | Artifact | Filename pattern | Purpose |
 |---|---|---|
