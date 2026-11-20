@@ -22,9 +22,9 @@
   "_ignore": "Drop findings entirely. Match against the finding signature (exact or glob, e.g. 'trivy-image:*:CVE-2011-*'). Prefer 'profile: curated' or '# secgate:ignore' inline comments over this — ignore is a sledgehammer.",
 
   "severityOverrides": [
-    { "rule": "html.security.audit.missing-integrity", "severity": "low" }
+    { "rule": "html.security.audit.missing-integrity*", "severity": "low" }
   ],
-  "_severityOverrides": "Re-classify findings by signature pattern. Use sparingly — better to address the root cause than to mute the signal.",
+  "_severityOverrides": "Re-classify findings by signature pattern (exact or glob). Semgrep signatures are the full rule id, e.g. 'html.security.audit.missing-integrity.missing-integrity', so end a short prefix with '*'. Use sparingly — better to address the root cause than to mute the signal.",
 
   "excludePaths": [
     "node_modules/**",
