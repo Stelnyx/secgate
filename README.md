@@ -21,7 +21,7 @@ One command. One report. One exit code.
 
 ---
 
-**SecGate** orchestrates five security scanners (**Semgrep, Gitleaks, osv-scanner, Trivy, and npm audit**) behind a single command. It normalizes their output into one report and fails the pipeline on CRITICAL or HIGH findings. No account and no telemetry. SecGate itself sends nothing over the network; the wrapped scanners fetch rules and advisories, and the HTML report links Google Fonts (see [Network access](#network-access)).
+**SecGate** orchestrates five security scanners (**Semgrep, Gitleaks, osv-scanner, Trivy, and npm audit**) behind a single command. It normalizes their output into one report and fails the pipeline on CRITICAL or HIGH findings. No account and no telemetry. SecGate itself sends nothing over the network; the wrapped scanners fetch rules and advisories, and the HTML report makes no external requests (see [Network access](#network-access)).
 
 ```mermaid
 flowchart LR
@@ -87,7 +87,7 @@ Without extra installs only **npm audit** runs (it ships with Node.js, and needs
 SecGate wraps five existing open-source scanners, runs them against a directory, and produces:
 
 - **One normalized JSON report** across every scanner
-- **One single-file HTML report** (dark theme, inline CSS, no JavaScript; fonts load from Google Fonts when online)
+- **One single-file HTML report** (dark theme, inline CSS, no JavaScript, system fonts, no external requests)
 - **One SARIF 2.1.0 file** ready for GitHub Code Scanning upload
 - **One exit code** — `1` when CRITICAL or HIGH findings are present; blocks CI
 
@@ -111,17 +111,21 @@ A missing scanner binary is skipped and listed in the report, but it is a covera
 
 ## Network access
 
-SecGate's own code makes **no network calls**: no telemetry, no account, no phone-home, and the report is written to local files. Two exceptions: four of the five wrapped scanners need the internet, and the HTML report links the Inter font from `fonts.googleapis.com` (via `@stelnyx/report-theme`), so a browser that opens it requests that font.
+SecGate's own code makes **no network calls**: no telemetry, no account, no phone-home, and the report is written to local files. One exception: four of the five wrapped scanners need the internet. The HTML report makes no external requests: it uses system fonts and loads no remote CSS, scripts or images.
 
 | Scanner | Network use |
 |---------|-------------|
-| Semgrep | Downloads its rules from the Semgrep Registry (`--config=auto`), then runs them against your files. |
+| Semgrep | Downloads its rules from the Semgrep Registry (`--config=auto`), then runs them against your files. With registry rules, Semgrep sends its own usage metrics to Semgrep, Inc. by default ([Semgrep metrics](https://docs.semgrep.dev/metrics)); SecGate does not change that setting. |
 | Gitleaks | None — scans your git history locally. |
 | npm audit | Queries the npm registry's advisory API for your dependency tree. |
 | osv-scanner | Queries the OSV.dev API for advisories matching your dependency manifests. |
 | Trivy | Downloads/updates its vulnerability database; pulls image layers when scanning container images. |
 
-So "no telemetry" is exact; "fully air-gapped" is not — run SecGate offline and Semgrep, `npm audit`, `osv-scanner`, and `Trivy` will degrade or skip (which SecGate reports). On first run, `osv-scanner` and Trivy may download vulnerability databases; SecGate prints a one-line note before starting those scanners so the initial delay is not mistaken for a hang. There is no offline mode.
+So "no telemetry" is exact for SecGate's own code; Semgrep's metrics (above) are Semgrep's, and "fully air-gapped" is not — run SecGate offline and Semgrep, `npm audit`, `osv-scanner`, and `Trivy` will degrade or skip (which SecGate reports). On first run, `osv-scanner` and Trivy may download vulnerability databases; SecGate prints a one-line note before starting those scanners so the initial delay is not mistaken for a hang. There is no offline mode.
+
+### Semgrep rules licensing
+
+SecGate does not include or redistribute any Semgrep rules. When Semgrep is installed, SecGate runs your own `semgrep` binary on your machine with `--config=auto`, so Semgrep fetches the rules from the Semgrep Registry and you use them for your own internal business purposes under the [Semgrep Rules License v1.0](https://semgrep.dev/legal/rules-license), or under each third-party rule's own license. Semgrep is a trademark of Semgrep, Inc. SecGate is not affiliated with or endorsed by Semgrep, Inc.
 
 ---
 
@@ -333,6 +337,7 @@ Limits:
 - Every npm invocation under `--apply` passes `--ignore-scripts` (and sets `npm_config_ignore_scripts=true`), so `preinstall` / `postinstall` scripts in the target's `package.json` or its dependencies are **not executed**.
 - `--apply` never auto-fixes CRITICAL findings; they go to `remediation.blocked`.
 - `--apply` is **gated**: refuses to run unless `SECGATE_CONFIRM_APPLY=1` is set (CI / non-interactive) or the user types `y` at an interactive TTY prompt.
+- `npm audit fix` runs at most once per `--apply` run, however many fixable findings there are.
 - Every `--apply` execution is recorded in the report's `auditLog` field and mirrored to stderr with timestamp and target.
 
 **Operator guidance:**
@@ -585,7 +590,7 @@ secgate . --format sarif             # also writes JSON + HTML
 Each run writes:
 
 - **`secgate-v7-report.json`** — machine-readable, schema below.
-- **`<repo-name>.html`** — single-file HTML report (inline CSS, no JavaScript, Google Fonts link). Filename derived from the target directory name.
+- **`<repo-name>.html`** — single-file HTML report (inline CSS, no JavaScript, system fonts, no external requests). Filename derived from the target directory name.
 - **`<repo-name>.sarif.json`** — SARIF 2.1.0 file (only when `--format sarif` is passed).
 
 ### JSON schema

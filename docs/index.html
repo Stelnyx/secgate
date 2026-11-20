@@ -227,7 +227,7 @@ footer .meta{color:var(--faint)}
     <div class="card">
       <div class="num">02</div>
       <h3>One HTML report</h3>
-      <p>A single file with a dark theme, inline CSS and no JavaScript. Findings are grouped by tool. When opened online, the browser loads the Inter font from Google Fonts.</p>
+      <p>A single file with a dark theme, inline CSS and no JavaScript. Findings are grouped by tool. It uses system fonts and makes no external requests.</p>
     </div>
     <div class="card">
       <div class="num">03</div>
@@ -284,7 +284,7 @@ footer .meta{color:var(--faint)}
       <tr><td><strong>Trivy</strong></td><td>IaC + license + base-image CVEs</td><td><span class="tag net">Network</span></td></tr>
     </tbody>
   </table>
-  <p style="margin-top:16px">SecGate itself makes <strong>no network calls</strong>: no telemetry, no phone-home. Four of the five wrapped scanners need the internet to fetch rules or advisories, and the HTML report links the Inter font from <code>fonts.googleapis.com</code>, so a browser that opens it requests that font. "No telemetry" is exact; "fully air-gapped" is not. Run offline and the network scanners degrade or skip, which SecGate reports. There is no offline mode.</p>
+  <p style="margin-top:16px">SecGate itself makes <strong>no network calls</strong>: no telemetry, no phone-home. Four of the five wrapped scanners need the internet to fetch rules or advisories. The HTML report makes no external requests: it uses system fonts. "No telemetry" is exact; "fully air-gapped" is not, because of the scanners. Run offline and the network scanners degrade or skip, which SecGate reports. There is no offline mode.</p>
 </section>
 
 <section id="honesty">

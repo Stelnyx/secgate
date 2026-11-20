@@ -47,7 +47,7 @@ Options considered included per-file HTML with external CSS/JS, multi-file SPA, 
 
 ### Implementation status (v0.3.3)
 
-The renderer now lives in `lib/report.mjs` (`renderHtml`) and builds on the shared `@stelnyx/report-theme` shell. It still writes one HTML file with inline CSS and inline images, but it differs from the decision above in three ways: there is no JavaScript and no per-scanner tabs (sections are plain anchors in a sidebar), and the theme shell adds `<link>` tags to Google Fonts (`fonts.googleapis.com`, `fonts.gstatic.com`), so the file is not free of external requests. The theme supports `skipInterFont: true`, which SecGate does not pass today.
+The renderer now lives in `lib/report.mjs` (`renderHtml`) and builds on the shared `@stelnyx/report-theme` shell. It still writes one HTML file with inline CSS and inline images, but it differs from the decision above in two ways: there is no JavaScript and no per-scanner tabs (sections are plain anchors in a sidebar). The theme shell would add `<link>` tags to Google Fonts by default, so SecGate passes `skipInterFont: true`; the report makes no external requests and uses system fonts, as this ADR requires. A test in `test/engine.mjs` guards this.
 
 ## Alternatives Considered
 
