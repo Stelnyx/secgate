@@ -639,6 +639,102 @@ test("intelligence: remediate blocks CRITICAL findings", () => {
   assert(result.confidence < 100, "confidence reduced for CRITICAL");
 });
 
+function withStubNpm(exitCode, fn) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "secgate-stub-npm-"));
+  const countFile = path.join(dir, "count");
+  const bin = path.join(dir, "bin");
+  fs.mkdirSync(bin);
+  fs.writeFileSync(path.join(bin, "npm"), `#!/bin/sh\necho "$@" >> "${countFile}"\nexit ${exitCode}\n`, { mode: 0o755 });
+  const oldPath = process.env.PATH;
+  process.env.PATH = `${bin}${path.delimiter}${oldPath}`;
+  try {
+    return fn(() => (fs.existsSync(countFile) ? fs.readFileSync(countFile, "utf-8").split("\n").filter(Boolean) : []));
+  } finally {
+    process.env.PATH = oldPath;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+const npmFinding = (sig, severity) => ({
+  signature: sig, severity, tool: "npm", type: "dependency",
+  fixable: true, fixableBy: "auto", baseline: false
+});
+
+test("intelligence: remediate --apply runs `npm audit fix` once for 3 fixable findings", () => {
+  if (process.platform === "win32") return;
+  withStubNpm(0, (calls) => {
+    const events = [];
+    const target = fs.mkdtempSync(path.join(os.tmpdir(), "secgate-apply-target-"));
+    try {
+      const result = remediate(
+        [npmFinding("a", "HIGH"), npmFinding("b", "MEDIUM"), npmFinding("c", "LOW")],
+        { apply: true, target, reportTarget: "repo", auditLog: (event, detail) => events.push({ event, detail }) }
+      );
+      assertEq(calls().length, 1, "npm invocations");
+      assertEq(calls()[0], "audit fix --ignore-scripts", "npm args");
+      assertEq(result.executed.length, 1, "one executed entry per real execution");
+      assertEq(result.plan.length, 3, "plan still lists every finding");
+      assertEq(events.filter(e => e.event === "apply_exec").length, 1, "one apply_exec audit entry");
+      assertEq(events.filter(e => e.event === "apply_ok").length, 1, "one apply_ok audit entry");
+    } finally {
+      fs.rmSync(target, { recursive: true, force: true });
+    }
+  });
+});
+
+test("intelligence: remediate --apply never runs npm for CRITICAL-only findings", () => {
+  if (process.platform === "win32") return;
+  withStubNpm(0, (calls) => {
+    const target = fs.mkdtempSync(path.join(os.tmpdir(), "secgate-apply-target-"));
+    try {
+      const result = remediate([npmFinding("a", "CRITICAL")], { apply: true, target, auditLog: () => {} });
+      assertEq(calls().length, 0, "npm invocations");
+      assertEq(result.blocked.length, 1, "CRITICAL blocked");
+      assertEq(result.executed.length, 0, "nothing executed");
+    } finally {
+      fs.rmSync(target, { recursive: true, force: true });
+    }
+  });
+});
+
+test("intelligence: remediate --apply with a CRITICAL among fixable findings runs npm once, CRITICAL stays blocked", () => {
+  if (process.platform === "win32") return;
+  withStubNpm(0, (calls) => {
+    const target = fs.mkdtempSync(path.join(os.tmpdir(), "secgate-apply-target-"));
+    try {
+      const result = remediate(
+        [npmFinding("a", "HIGH"), npmFinding("crit", "CRITICAL"), npmFinding("b", "HIGH")],
+        { apply: true, target, auditLog: () => {} }
+      );
+      assertEq(calls().length, 1, "npm invocations");
+      assertEq(result.executed.length, 1, "one executed entry");
+      assertEq(result.blocked.length, 1, "only the CRITICAL is blocked");
+    } finally {
+      fs.rmSync(target, { recursive: true, force: true });
+    }
+  });
+});
+
+test("intelligence: remediate --apply failure is logged once and findings stay blocked", () => {
+  if (process.platform === "win32") return;
+  withStubNpm(1, (calls) => {
+    const events = [];
+    const target = fs.mkdtempSync(path.join(os.tmpdir(), "secgate-apply-target-"));
+    try {
+      const result = remediate(
+        [npmFinding("a", "HIGH"), npmFinding("b", "HIGH")],
+        { apply: true, target, auditLog: (event, detail) => events.push({ event, detail }) }
+      );
+      assertEq(calls().length, 1, "npm invocations");
+      assertEq(result.executed.length, 0, "nothing executed");
+      assertEq(result.blocked.length, 2, "every unfixed finding stays blocked");
+      assertEq(events.filter(e => e.event === "apply_fail").length, 1, "one apply_fail audit entry");
+    } finally {
+      fs.rmSync(target, { recursive: true, force: true });
+    }
+  });
+});
+
 // #55: reasoning enrichment
 test("intelligence: analyze reasoning includes file, line, severity fields", () => {
   const findings = [
@@ -818,6 +914,27 @@ test("report: renderHtml escapes HTML in finding fields", () => {
   assert(!html.includes("<evil>"), "unescaped <evil> not present");
   assert(html.includes("&lt;evil&gt;"), "escaped &lt;evil&gt; present");
   assert(!html.includes("<script>alert(1)</script>"), "script not injected");
+});
+
+test("report: renderHtml makes no external requests (no web fonts, no remote link/script/@import)", () => {
+  const rep = {
+    version: "0.2.0", timestamp: "2026-04-23T00:00:00Z", target: "repo",
+    mode: "dry-run", status: "PASS",
+    summary: { critical: 0, high: 0, medium: 0, low: 0, unknown: 0 },
+    findings: [],
+    tools: { semgrep: "clean", gitleaks: "skipped", npm: "clean", osv: "skipped", trivy: "clean" },
+    toolSkipReason: {},
+    suppressions: { count: 0, byRule: {} },
+    intelligence: { riskScore: 0, attackSurface: [], reasoning: [], recommendations: [] },
+    remediation: { plan: [], stagedChanges: [], executed: [], blocked: [], confidence: 100 },
+    auditLog: []
+  };
+  const html = renderHtml(rep, "repo");
+  assert(!html.includes("fonts.googleapis.com"), "no fonts.googleapis.com");
+  assert(!html.includes("fonts.gstatic.com"), "no fonts.gstatic.com");
+  assert(!/<link\b[^>]*https?:\/\//i.test(html), "no remote <link>");
+  assert(!/<script\b[^>]*\bsrc\s*=\s*["']?(?:https?:)?\/\//i.test(html), "no remote <script src>");
+  assert(!/@import[^;]*(?:https?:)?\/\//i.test(html), "no remote @import");
 });
 
 test("report: buildSarif produces valid SARIF 2.1.0 structure", () => {

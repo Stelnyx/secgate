@@ -6,6 +6,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + [Semantic Ver
 
 ## [Unreleased]
 
+### Fixed
+- **The HTML report makes no external requests.** The report linked Google
+  Fonts (`fonts.googleapis.com`, `fonts.gstatic.com`), so opening it sent a
+  request to Google, against ADR-0004. It now uses system fonts and has no
+  remote `<link>`, `<script src>` or `@import`. README, ARCHITECTURE, the
+  threat model and the landing page said the opposite and now match.
+- **`--apply` runs `npm audit fix` once per run.** It ran once per fixable
+  finding, so three findings meant three runs of the same command. It now runs
+  once, still with `--ignore-scripts`; CRITICAL findings are still never
+  auto-fixed. The audit log has one `apply_exec` / `apply_ok` / `apply_fail`
+  entry per real execution, and `remediation.executed` has one entry. These
+  events now carry `signatures` (an array) instead of `signature`.
+
 ## [0.3.3] - 2026-11-16
 
 ### Fixed

@@ -26,9 +26,9 @@ The theme ships one dark palette. There is no light theme and no theme toggle.
 | `--error` | `#ff3b30` |
 | `--pink` | `#ff2d78` |
 
-Fonts: Inter (loaded from Google Fonts unless the shell is called with
-`skipInterFont: true`; SecGate does not pass it) and JetBrains Mono with system
-fallbacks.
+Fonts: system fonts only. The theme shell loads Inter from Google Fonts unless
+it is called with `skipInterFont: true`; SecGate passes it, so the report makes
+no external requests (see ADR-0004).
 
 ## SecGate-specific facts
 

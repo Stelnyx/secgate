@@ -113,7 +113,7 @@ Ranked by blast radius.
 | Report uploaded publicly leaks internal file paths | `--strip-paths` (on when `CI=true`) replaces the absolute target path with the repo name |
 | Gitleaks output echoes live secrets to stdout/logs | SecGate runs Gitleaks with `--redact`, writes its report to a private temp directory that is deleted afterwards, and keeps only rule ID, description, file and line. No secret value reaches the JSON, HTML or SARIF report |
 | CI logs expose SecGate verbose output containing rule context | `--debug` is opt-in only. Default output is summary-level |
-| HTML report opened in a browser contacts a third party | The report links Google Fonts through `@stelnyx/report-theme`, so opening it sends a request (IP, user agent) to Google. No report data is sent |
+| HTML report opened in a browser contacts a third party | The report makes no external requests: it is one file with inline CSS and system fonts, so opening it contacts no third party. `test/engine.mjs` checks that the rendered HTML has no remote `<link>`, `<script src>` or `@import` |
 
 ### D — Denial of Service
 

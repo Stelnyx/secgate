@@ -307,10 +307,10 @@ The steps below follow the existing scanners. See
   The scanners do: Semgrep fetches `--config=auto` rules from the Semgrep
   Registry, npm audit and osv-scanner query advisory APIs, Trivy downloads its
   databases and pulls images.
-- The HTML report links Google Fonts (`fonts.googleapis.com`,
-  `fonts.gstatic.com`) through `@stelnyx/report-theme`, so a browser opening
-  it makes those requests. Without network the report falls back to system
-  fonts.
+- The HTML report makes no external requests. `lib/report.mjs` passes
+  `skipInterFont: true` to the `@stelnyx/report-theme` shell, so the file
+  has no Google Fonts links and renders with system fonts
+  (`test/engine.mjs` checks the rendered HTML).
 
 ## Testing layout
 

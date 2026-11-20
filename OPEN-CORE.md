@@ -45,6 +45,8 @@ These do not exist. They are candidates for a future paid tier. None of them rem
 
 Building any of these requires revenue to justify. They will not ship as OSS because they require hosted infrastructure that costs money to run. If they ship, they will be priced transparently with a public self-hosted option where feasible.
 
+A hosted service would not run Semgrep-maintained registry rules on customer code: the [Semgrep Rules License v1.0](https://semgrep.dev/legal/rules-license) limits them to the user's own internal business purposes. Any hosted scanning would use rules licensed for that use. Today SecGate ships no rules; it runs the user's own `semgrep` on the user's machine.
+
 ---
 
 ## What this means for contributors
