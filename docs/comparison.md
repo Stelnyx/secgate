@@ -15,7 +15,7 @@ All comparisons reflect the **free / open-source tier** of each product as of 20
 | Capability | SecGate | Snyk (free) | Trivy (standalone) | Semgrep OSS | Aikido (free) |
 |-----------|:-------:|:-----------:|:------------------:|:-----------:|:-------------:|
 | **SAST** | via Semgrep | limited | no | yes | yes |
-| **SCA — Node** | via npm + osv | yes | via osv plugin | no | yes |
+| **SCA — Node** | via npm + osv | yes | yes | no | yes |
 | **SCA — polyglot** | via osv | yes | yes | no | yes |
 | **Secrets detection** | via Gitleaks | basic | yes | no | yes |
 | **IaC misconfiguration** | via Trivy | yes | yes | partial | yes |
@@ -24,8 +24,8 @@ All comparisons reflect the **free / open-source tier** of each product as of 20
 | **SARIF output** | yes (v0.2.0) | yes | yes | yes | yes |
 | **Baseline / ratcheting** | yes (v0.2.0) | yes | no | yes | yes |
 | **Auto-fix** | npm only (ADR-0002) | yes (paid mostly) | no | no | limited |
-| **Free for commercial use** | **yes** (MIT) | limited (seat cap) | yes (Apache 2.0) | yes (LGPL rules) | free tier |
-| **Self-hosted / air-gapped** | **yes** | no (SaaS only on free) | yes | yes | no |
+| **Free for commercial use** | **yes** (MIT; Semgrep registry rules have their own license) | limited (seat cap) | yes (Apache 2.0) | engine LGPL-2.1; Semgrep-maintained rules under the Semgrep Rules License (internal use) | free tier |
+| **Self-hosted / air-gapped** | self-hosted yes; not air-gapped (scanners fetch rules and advisory data) | no (SaaS only on free) | yes | yes | no |
 | **Bundled orchestration** | **yes** | — | no (single tool) | no | yes (SaaS) |
 | **No account / signup required** | **yes** | no | yes | yes | no |
 | **No telemetry by default** | **yes** (ADR-0005) | no | yes | yes | no |
@@ -38,7 +38,7 @@ All comparisons reflect the **free / open-source tier** of each product as of 20
 
 ### SecGate wins when
 - You want **one command** that runs five scanners and gives one verdict.
-- You need **local, offline, self-hosted** scanning with no SaaS account.
+- You need **local, self-hosted** scanning with no SaaS account.
 - You want **zero lock-in** — every scanner is independently installable.
 - You want **zero telemetry** by default.
 - You're a solo founder / small team and can't afford Snyk seats.
@@ -70,10 +70,10 @@ Every other tool on this list either:
 - Does one thing (Semgrep = SAST only; Trivy standalone = container/IaC only), forcing you to wire together multiple tools yourself, **or**
 - Bundles many scanners behind a SaaS account with telemetry, seat caps, and lock-in (Snyk, Aikido).
 
-SecGate is the only option that:
+Among the tools above, SecGate is the only one that:
 
 1. **Bundles five best-in-class OSS scanners** behind one CLI.
-2. **Requires zero config** — `npx @stelnyx/secgate .` runs npm audit with no extra installs, plus Semgrep, Gitleaks, osv-scanner and Trivy when they are on `PATH`. Missing scanners are reported as not run (`n/a`), and the run exits `2` when none ran.
+2. **Requires zero config** — `npx @stelnyx/secgate .` runs npm audit with no extra installs, plus Semgrep, Gitleaks, osv-scanner and Trivy when they are on `PATH`. Missing scanners are reported as not run (`n/a`); the run exits `2` (INCOMPLETE) when a scanner that applies did not run and there are no blocking findings, or when none ran.
 3. **Ships no telemetry, no account, no dashboard** — output is local files.
 4. **Stays MIT-licensed and free forever** — no seat caps, no commercial restrictions.
 5. **Produces one normalized report** — one JSON schema, one HTML file, across all scanners.

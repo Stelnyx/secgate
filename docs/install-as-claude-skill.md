@@ -4,11 +4,11 @@ Install SecGate as a Claude Code slash command (`/security-scan`) in any project
 
 ## Why
 
-Zero npm install friction. Works with any Claude Code subscription. Claude interprets scanner output intelligently — not just JSON parsing.
+No npm install. Works in any project opened in Claude Code. Claude reads flagged files to separate real findings from likely false positives. The skill runs the scanners directly; it does not run the SecGate CLI, so it has no baseline, config file, SARIF or HTML output.
 
 ## This Is an Implementation Task
 
-Haiku: follow these steps exactly. No source code changes. File operations only.
+Follow these steps exactly. No source code changes. File operations only.
 
 ---
 
@@ -80,7 +80,7 @@ Open Claude Code in any project. Type `/security-scan .`
 
 | Step | What Claude does |
 |------|-----------------|
-| Detect tools | Checks `which semgrep`, `which gitleaks`, `which npm` |
+| Detect tools | Checks `which` for semgrep, gitleaks, npm, osv-scanner and trivy |
 | Run scanners | Runs only tools that exist, captures JSON output |
 | Verify findings | Reads flagged files to confirm vs false-positive |
 | Score | CRITICAL=10pts, HIGH=6pts, MEDIUM=3pts, LOW=1pt |

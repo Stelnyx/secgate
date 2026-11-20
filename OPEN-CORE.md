@@ -16,13 +16,13 @@ These capabilities are shipped today and will not move behind a paywall:
 - **Finding normalization** — unified severity model, deduplication, `addFinding()` pipeline
 - **SARIF 2.1.0 output** — standard format, no lock-in
 - **JSON report** — full schema, machine-readable, no proprietary fields
-- **Self-contained HTML report** — per-scanner tabs, sidebar shell shared with the other Stelnyx products, Midnight/Dawn Blossom theme toggle, zero external assets
+- **Single-file HTML report** — sidebar shell from the shared `@stelnyx/report-theme` package, dark theme, inline CSS, no JavaScript
 - **Confidence profiles** — `curated` (default) / `strict` HTML report demotion logic; built-in mute list for known-noisy patterns; collapsed Informational + Suppressed details blocks
 - **Baseline / ratcheting** — `--update-baseline`, `--baseline`, suppress known findings
-- **Inline suppressions** — `secgate:ignore` comments, audit-logged
+- **Inline suppressions** — `secgate:ignore` comments, counted per rule in the report
 - **Config file** — `.secgate.config.json`, severity overrides, scanner toggles, profile selection
 - **CLI** — `secgate`, `npx @stelnyx/secgate`, GitHub composite Action
-- **Local and air-gapped use** — no required network calls, no telemetry, no account
+- **Local use** — no telemetry, no account, and no network calls from SecGate's own code (the wrapped scanners still fetch rules and advisory data)
 
 If you build on any of the above today, it will still be there and free in 18 months.
 

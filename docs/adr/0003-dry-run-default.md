@@ -21,7 +21,7 @@ The user's mental model of `secgate .` should be: "a scanner reads my code and t
 **We will default to dry-run. Side effects (executing fixes) require an explicit `--apply` flag.**
 
 - Default mode (`secgate .`) → read-only. Produces report. Exit code reflects findings. No filesystem mutation outside scan artifacts.
-- Opt-in mode (`secgate . --apply`) → executes fixable remediations. Side effects are logged in `remediation.executed[]`.
+- Opt-in mode (`secgate . --apply`) → executes fixable remediations. Side effects are logged in `remediation.executed[]` and `auditLog[]`. `--apply` also requires `SECGATE_CONFIRM_APPLY=1` or a `y` answer at a TTY prompt; otherwise SecGate exits 2 before scanning.
 
 Scan artifacts (`secgate-v7-report.json`, `<repo>.html`) are always written — they are the product of the tool, not a side effect.
 
@@ -49,7 +49,7 @@ Scan artifacts (`secgate-v7-report.json`, `<repo>.html`) are always written — 
 Rejected. Inverts the blast radius — the wrong default is to mutate. First-time users discovering the tool would be blindsided.
 
 ### Prompt interactively ("apply this fix? y/n")
-Rejected. Breaks non-interactive CI. Would require dual code paths.
+Rejected as a replacement for the flag. Breaks non-interactive CI. Would require dual code paths. (Later, a TTY confirmation was added on top of `--apply`, with `SECGATE_CONFIRM_APPLY=1` for CI; the flag is still required.)
 
 ### Split commands: `secgate scan` and `secgate fix`
 Considered. Arguably cleaner but doubles the surface. For v0.1.x the flag-based split is enough. Can refactor if we add more mutating operations.
@@ -57,5 +57,5 @@ Considered. Arguably cleaner but doubles the surface. For v0.1.x the flag-based 
 ## References
 
 - [ADR-0002 — npm-only auto-fix](0002-npm-only-auto-fix.md)
-- `secgate.js` — `applyRemediation()` gated on `--apply`
+- `secgate.js` — `confirmApplyOrExit()`; `lib/intelligence.mjs` — `remediate()` executes only when `apply` is true
 - [`docs/threat-model.md`](../threat-model.md) — dry-run as a mitigation against E-of-P via malicious lifecycle scripts

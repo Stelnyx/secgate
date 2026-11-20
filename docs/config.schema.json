@@ -5,6 +5,9 @@
   "description": "Configuration for .secgate.config.json — place in the scan target directory.",
   "type": "object",
   "additionalProperties": false,
+  "patternProperties": {
+    "^_": { "description": "Keys starting with '_' are ignored by SecGate and can hold comments (see .secgate.config.example.json)." }
+  },
   "properties": {
     "failOn": {
       "type": "array",
@@ -48,15 +51,15 @@
           },
           "severity": {
             "type": "string",
-            "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN"],
+            "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN", "critical", "high", "medium", "low", "unknown"],
             "description": "Target severity (case-insensitive)."
           }
         }
       },
       "default": [],
       "examples": [
-        [{ "rule": "npm-audit.lodash", "severity": "LOW" }],
-        [{ "rule": "trivy-ID-*", "severity": "MEDIUM" }]
+        [{ "rule": "lodash", "severity": "LOW" }],
+        [{ "rule": "DS*", "severity": "MEDIUM" }]
       ]
     },
     "ignore": {
@@ -64,7 +67,14 @@
       "description": "Signatures to drop entirely. Supports literal strings and '*' wildcard. Ignored findings are excluded from counters and the fail-gate.",
       "items": { "type": "string" },
       "default": [],
-      "examples": [["CVE-2024-12345", "npm:some-package*"]]
+      "examples": [["*CVE-2024-12345", "npm:some-package@*"]]
+    },
+    "excludePaths": {
+      "type": "array",
+      "description": "Drop findings whose file matches any of these globs ('*' matches any characters, including '/'). Matched against the file as reported and relative to the scan target. Applied after the scanners run; Trivy image scanning also skips Dockerfiles that match.",
+      "items": { "type": "string" },
+      "default": [],
+      "examples": [["test/fixtures/**", "**/*.test.ts"]]
     },
     "baselineFile": {
       "type": "string",
@@ -73,7 +83,7 @@
     },
     "customSemgrepRules": {
       "type": ["string", "null"],
-      "description": "Path to custom Semgrep rules directory or config file. Passed as --config=<path> in addition to --config=auto. Relative paths are resolved from the scan target.",
+      "description": "Path to custom Semgrep rules directory or config file. Passed as --config=<path> in addition to --config=auto. Must resolve inside the scan target, else it is ignored with a warning. The path is passed to Semgrep unchanged, and Semgrep resolves a relative path against SecGate's working directory, not the target.",
       "default": null,
       "examples": ["./rules/", ".semgrep/"]
     },
@@ -82,7 +92,7 @@
       "description": "Scanners that must run. If any listed scanner is skipped (not installed, disabled, not applicable) or errors, SecGate exits 2. The --require CLI flag overrides this list. A value that is not an array, or an unknown name, is an error (exit 2).",
       "items": {
         "type": "string",
-        "enum": ["semgrep", "gitleaks", "npm", "osv", "osv-scanner", "trivy"]
+        "enum": ["semgrep", "gitleaks", "npm", "npm-audit", "osv", "osv-scanner", "trivy"]
       },
       "default": [],
       "examples": [["semgrep", "gitleaks"], ["semgrep", "gitleaks", "osv", "trivy"]]

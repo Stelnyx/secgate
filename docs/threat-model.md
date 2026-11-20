@@ -49,7 +49,7 @@ flowchart LR
 | Zone | Trust level | Controlled by |
 |------|-------------|---------------|
 | SecGate CLI process | Trusted (this repo) | Stelnyx |
-| Upstream scanner binaries | Semi-trusted (signed releases, pinned versions) | Semgrep, GitGuardian, Google, Aqua, npm |
+| Upstream scanner binaries | Semi-trusted: whatever binary is first on `PATH`; SecGate does not pin or verify versions | Semgrep, Gitleaks project, Google, Aqua, npm |
 | Scanned repository contents | **Untrusted** (can be adversarial) | End user / customer / PR author |
 | CI environment | Trusted (customer-owned, but holds secrets) | End user |
 
@@ -76,7 +76,7 @@ Ranked by blast radius.
 | **Malicious scanned repo** — attacker submits PR with hostile code / lifecycle scripts / crafted filenames | Arbitrary file contents, arbitrary `package.json` scripts, symlinks | **High** — primary attack surface for any hosted CI scanner |
 | **Compromised scanner binary** — upstream registry hijack, supply-chain attack on Semgrep/Trivy/etc. | Code exec at SecGate's privilege level | Low-Medium — historical precedent exists |
 | **Malicious CI workflow** — attacker with write access to `.github/workflows/` invokes SecGate with hostile flags | Full CI env access already; SecGate is not the primary control | Medium — out of scope (customer-owned). `--ignore-target-policy` and `--require` are workflow flags, so an attacker who can edit the workflow can drop them |
-| **Local dev with malicious config** — hostile `.secgaterc` or similar future config file | Depends on config surface (see #32) | Medium — mitigated by not executing config |
+| **Malicious config in the scanned repo** — hostile `.secgate.config.json` | Turn scanners off, lower severities, ignore or exclude findings, point `customSemgrepRules` at rules inside the repo | **High** for pull-request CI — mitigated by `--require` and `--ignore-target-policy` (see Tampering). The file is parsed with `JSON.parse` and never executed; `baselineFile` and `customSemgrepRules` must resolve inside the target |
 
 ---
 
@@ -86,33 +86,34 @@ Ranked by blast radius.
 
 | Threat | Mitigation |
 |--------|-----------|
-| Attacker substitutes a fake scanner binary on `$PATH` | Document pinning via Homebrew/apt checksums; recommend `npx --package=<pinned>` in CI; future: verify signed releases (see #29) |
+| Attacker substitutes a fake scanner binary on `$PATH` | SecGate runs the first matching binary on `PATH` and does not verify it. Install scanners from a controlled source (this repo's CI uses `.github/actions/install-scanners`, which pins versions). The composite action runs `npx @stelnyx/secgate@latest` unless `secgate-path` is set, so the CLI version is not pinned either |
 | Forged HTML report uploaded as "SecGate output" | Reports are advisory, not authoritative. Real CI gate is exit code from SecGate process run on fresh artifacts |
 
 ### T — Tampering
 
 | Threat | Mitigation |
 |--------|-----------|
-| Scanned repo includes `package.json` with malicious `preinstall`/`postinstall` | `--ignore-scripts` passed to `npm audit` (see #29). SecGate never runs `npm install` against target |
+| Scanned repo includes `package.json` with malicious `preinstall`/`postinstall` | Dry-run (default) runs only `npm audit --json`, which does not run lifecycle scripts. `--apply` runs `npm audit fix --ignore-scripts` with `npm_config_ignore_scripts=true`. SecGate never runs `npm install` |
 | Symlink in scanned repo points outside target to exfil creds | SecGate's own preflight walk skips symlinks and tracks real directories to avoid cycles. Scanner binaries inherit their own symlink policies. Document: run in container with bind-mount read-only |
 | Attacker modifies `secgate-v7-report.json` between runs | Filename is predictable; CI artifact upload uses run-scoped storage. Do not trust reports from across runs |
-| Scanner binary tampered in-place | Future: verify SBOM + signatures (see #29). Today: rely on package-manager integrity |
+| Scanner binary tampered in-place | Not detected by SecGate; rely on package-manager integrity and a controlled install step |
 | Scanned repo turns scanners off through its own `.secgate.config.json` (`scanners.<name>: false`, or its own `requireScanners`) and still gets PASS | Config is read from the untrusted target, so only the `--require` flag (action input `require`) set in the workflow is trusted: a required scanner that the config disables exits 2. The console prints a NOTE and the JSON report lists `disabledByConfig`; SARIF runs carry `properties.disabledByConfig`. Use `--require` for pull requests. `--require` guarantees that the scanners ran, not that their findings block: without `--ignore-target-policy` the config's `failOn`, `ignore`, `excludePaths` and `severityOverrides` can still hide findings. With `--ignore-target-policy` (action input `ignore-target-policy`) SecGate ignores those four keys and uses the built-in defaults; the console NOTE, the JSON `ignoredTargetPolicy` and SARIF `properties.ignoredTargetPolicy` list the keys the repo had set. The control holds only while pull requests cannot change the workflow file (a `pull_request` run uses the workflow file from the merge commit). Inline `secgate:ignore` comments and the `--baseline` file still come from the scanned repo and can hide a finding even with the flag (#92) |
 
 ### R — Repudiation
 
 | Threat | Mitigation |
 |--------|-----------|
-| Developer claims SecGate "passed" on a release that shipped vuln | JSON report is deterministic and CI-archived. Timestamp + version + mode are in every report |
-| No audit trail for `--apply` runs | `remediation.executed[]` records each executed fix. Document: require code review of `--apply` diffs before merge |
+| Developer claims SecGate "passed" on a release that shipped vuln | The JSON report records version, mode, timestamp, scanner status and coverage. Findings are sorted deterministically; scanner versions and databases are not pinned, so a rerun can differ |
+| No audit trail for `--apply` runs | `auditLog[]` in the report (mirrored to stderr) records `apply_confirmed`, `apply_start`, `apply_exec`, `apply_ok` and `apply_fail`; `remediation.executed[]` lists executed fixes. Require code review of `--apply` diffs before merge |
 
 ### I — Information Disclosure
 
 | Threat | Mitigation |
 |--------|-----------|
-| Report uploaded publicly leaks internal file paths | `--strip-paths` (see #29) replaces absolute paths with repo-relative |
-| Gitleaks output echoes live secrets to stdout/logs | Gitleaks redaction is upstream; SecGate does not re-log raw match bodies. HTML report masks secret values |
+| Report uploaded publicly leaks internal file paths | `--strip-paths` (on when `CI=true`) replaces the absolute target path with the repo name |
+| Gitleaks output echoes live secrets to stdout/logs | SecGate runs Gitleaks with `--redact`, writes its report to a private temp directory that is deleted afterwards, and keeps only rule ID, description, file and line. No secret value reaches the JSON, HTML or SARIF report |
 | CI logs expose SecGate verbose output containing rule context | `--debug` is opt-in only. Default output is summary-level |
+| HTML report opened in a browser contacts a third party | The report links Google Fonts through `@stelnyx/report-theme`, so opening it sends a request (IP, user agent) to Google. No report data is sent |
 
 ### D — Denial of Service
 
@@ -127,9 +128,9 @@ Ranked by blast radius.
 
 | Threat | Mitigation |
 |--------|-----------|
-| Command injection via crafted filename passed to scanner | SecGate uses `spawn()` with argument arrays, never shell strings. All user-supplied paths are passed as single `argv[]` entries |
-| Path traversal in target argument (`secgate ../../etc`) | Target is resolved to absolute path and used as-is; scanner binaries operate within their own path policies. Document: run SecGate as non-root |
-| `--apply` runs `npm audit fix` which executes lifecycle scripts on fix install | `npm audit fix --ignore-scripts` (see #29). Dry-run is default (see ADR-0003) |
+| Command injection via crafted filename passed to scanner | SecGate uses `execFile()` / `execFileSync()` with argument arrays, never shell strings. All user-supplied paths are passed as single `argv[]` entries |
+| Path traversal in target argument (`secgate ../../etc`) | Target is resolved to absolute path and used as-is; scanner binaries operate within their own path policies. `baselineFile` and `customSemgrepRules` from the config must resolve inside the target. Run SecGate as non-root |
+| `--apply` runs `npm audit fix` which executes lifecycle scripts on fix install | `npm audit fix --ignore-scripts`. Dry-run is default (see ADR-0003), and `--apply` also needs `SECGATE_CONFIRM_APPLY=1` or a `y` at a TTY prompt |
 
 ---
 
@@ -144,17 +145,17 @@ sequenceDiagram
   participant Artifacts as Report Artifacts
 
   User->>CLI: secgate <path> [--apply]
-  CLI->>FS: stat + resolve path
-  CLI->>Scanners: spawn(semgrep, gitleaks, osv, trivy, npm audit)
+  CLI->>FS: stat + resolve path, bounded preflight walk
+  CLI->>Scanners: execFile(semgrep, gitleaks, osv-scanner, trivy, npm audit)
   Scanners->>FS: read files (no exec)
-  Scanners-->>CLI: JSON on stdout
+  Scanners-->>CLI: JSON on stdout (Gitleaks: temp report file)
   CLI->>CLI: parse + normalize + score
-  CLI->>Artifacts: write secgate-v7-report.json + <repo>.html
-  alt --apply set
+  alt --apply set and confirmed
     CLI->>Scanners: npm audit fix --ignore-scripts
     Scanners->>FS: mutate node_modules + lockfile
   end
-  CLI-->>User: exit 0 (PASS) | 1 (FAIL) | 2 (error)
+  CLI->>Artifacts: write secgate-v7-report.json + <repo>.html (+ SARIF)
+  CLI-->>User: exit 0 (PASS) | 1 (FAIL) | 2 (INCOMPLETE or error)
 ```
 
 ---
@@ -169,11 +170,13 @@ Cross-referenced with epic **#29 (hardening epic)**.
 | `--strip-paths` flag to remove absolute paths from reports | **Shipped** | README |
 | Bounded preflight walk with workspace detection | **Shipped** | README / `lib/walk.mjs` |
 | Hard scanner subprocess timeouts with explicit timeout classification | **Shipped** | `lib/utils.mjs` / `test/timeout.mjs` |
-| SBOM publication alongside npm releases | Planned | #29 |
-| Signed release binaries + provenance | **Shipped** (npm provenance) | README |
+| SBOM publication alongside releases | **Shipped** (CycloneDX, GitHub Release assets) | `.github/workflows/release.yml` |
+| Signed release artifacts + provenance | **Shipped** (cosign keyless, SLSA, npm provenance) | [`SECURITY.md`](../SECURITY.md#supply-chain-trust) |
 | Argument-array subprocess execution (no shell) | **Shipped** | `lib/utils.mjs` |
 | Dry-run default for remediation | **Shipped** | ADR-0003 |
-| Config file execution prohibited | Planned | #32 |
+| Config file is data, never executed (`JSON.parse` only) | **Shipped** | `lib/config.mjs` |
+| `--require` / `--ignore-target-policy` against hostile target config | **Shipped** | README "Untrusted pull requests" |
+| Inline suppressions and baseline file still controlled by the target | Open | #92 |
 | Scanner version pinning guide | Planned | `docs/tuning.md` |
 
 ---
@@ -191,5 +194,6 @@ Cross-referenced with epic **#29 (hardening epic)**.
 | Date | Change |
 |------|--------|
 | 2026-04-23 | Initial publication |
+| 2026-11-20 | Aligned with the `v0.3.3` code: execFile, config threat actor, Gitleaks redaction, HTML font request, shipped SBOM and signing |
 
 See also: [`coverage.md`](coverage.md), [`tuning.md`](tuning.md), [`adr/`](adr/), [`../SECURITY.md`](../SECURITY.md).

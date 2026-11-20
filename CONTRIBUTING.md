@@ -19,7 +19,12 @@ git clone https://github.com/Stelnyx/SecGate.git
 cd SecGate
 npm install
 node secgate.js --help
+npm run lint
+npm test
 ```
+
+Read [ARCHITECTURE.md](ARCHITECTURE.md) first: it maps every module, the run
+pipeline, the exit-code logic, and the steps to add a scanner.
 
 ## Pull request checklist
 
@@ -27,7 +32,7 @@ node secgate.js --help
 - [ ] Commit messages follow Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`, `refactor:`, `test:`)
 - [ ] New detectors or remediations include a short test fixture
 - [ ] No secrets, tokens, or real scan artifacts committed
-- [ ] README updated if CLI flags or output shape changed
+- [ ] README and ARCHITECTURE.md updated if CLI flags, exit codes, scanners or output shape changed
 
 ## Releases
 

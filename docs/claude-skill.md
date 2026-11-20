@@ -22,16 +22,16 @@ Parse `.results[]` → `check_id`=signature, `extra.severity`=severity, `extra.m
 
 **gitleaks:**
 ```bash
-gitleaks detect --source <target> --report-format json --report-path /tmp/gl.json 2>/dev/null
+gitleaks detect --source <target> --report-format json --report-path /tmp/gl.json --redact 2>/dev/null
 cat /tmp/gl.json 2>/dev/null || echo "[]"
 ```
-Parse array → `RuleID`=signature, `Description`=message, `File`+`StartLine`=location. All severity = CRITICAL.
+Parse array → `RuleID`=signature, `Description`=message, `File`+`StartLine`=location. All severity = CRITICAL. `detect` scans git history only; outside a git repository, report Gitleaks as not run.
 
 **npm audit** (only if `<target>/package.json` exists):
 ```bash
 cd <target> && npm audit --json 2>/dev/null
 ```
-Parse `.vulnerabilities` → key=package, `severity`, `title`. Map: `critical`→CRITICAL, `high`→HIGH, else MEDIUM.
+Parse `.vulnerabilities` → key=package, `severity`, `title`. Map: `critical`→CRITICAL, `high`→HIGH, `moderate`→MEDIUM, `low` and `info`→LOW.
 
 **osv-scanner:**
 ```bash
@@ -41,13 +41,13 @@ Parse `.results[].packages[].vulnerabilities[]` → advisory ID, package ecosyst
 
 **trivy fs:**
 ```bash
-trivy fs --quiet --format json --scanners misconfig,license --skip-dirs '**/node_modules' <target> 2>/dev/null
+trivy fs --quiet --format json --exit-code 0 --scanners misconfig,license --skip-dirs '**/node_modules' <target> 2>/dev/null
 ```
 Parse `.Results[].Misconfigurations[]` and `.Results[].Licenses[]`.
 
 **trivy image** (for Dockerfile `FROM` images):
 ```bash
-trivy image --format json --quiet <image-ref> 2>/dev/null
+trivy image --format json --quiet --exit-code 0 <image-ref> 2>/dev/null
 ```
 Parse `.Results[].Vulnerabilities[]`, marking findings as base-image scan results.
 

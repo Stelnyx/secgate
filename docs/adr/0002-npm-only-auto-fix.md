@@ -26,7 +26,7 @@ Each ecosystem has different auto-fix maturity:
 **We will only auto-fix findings that `npm audit fix` can handle. All other findings are report-only, with manual remediation guidance in the fix plan.**
 
 Scope of auto-fix today:
-- `findings[].fixable == true` **and** `findings[].tool == "npm"` → candidate for `npm audit fix --ignore-scripts` when `--apply` is set.
+- `findings[].fixable == true` **and** `findings[].tool == "npm"` → candidate for `npm audit fix --ignore-scripts` when `--apply` is set. CRITICAL findings are never auto-fixed; they go to `remediation.blocked[]`.
 - Everything else → surfaced in `remediation.plan[]` as a manual step with a display command, but never executed.
 
 ## Consequences
@@ -61,4 +61,4 @@ Strong candidate for v0.2.x. See [ADR-0003](0003-dry-run-default.md) for the dry
 
 - [ADR-0003 — dry-run default](0003-dry-run-default.md)
 - [`docs/tuning.md`](../tuning.md)
-- `secgate.js` `buildRemediationPlan()`
+- `lib/intelligence.mjs` — `patch()` and `remediate()`

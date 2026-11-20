@@ -20,12 +20,14 @@ Demotes known-noisy patterns to a collapsed **Informational** block so the actio
 |---------|-------------|
 | `type: "license"` (Trivy SPDX flagging) | Governance/legal posture, not a security threat. |
 | Trivy base-image OS CVEs at LOW/MEDIUM (`scanMode: "image"` or `signature: "trivy-image:*"`) | Rarely reachable from app runtime (`apt-secure`, `libtinfo`, `perl-base`). CRITICAL/HIGH still surface inline. |
-| CVEs >5 years old, severity != CRITICAL | Upstream has decided exploitability is bounded. |
+| CVE IDs from a year before the current year minus 5, severity != CRITICAL | Old and still unfixed upstream usually means bounded exploitability. |
 | `UNKNOWN` severity | Scanner couldn't classify — surfaced for audit. |
-| `html.security.audit.missing-integrity` | Fires on every `<script src>` (incl. inline favicon SVGs). HSTS/COEP cover the real risk. |
-| `path-join-resolve-traversal` Semgrep rule | Common false positive in CLI tools that resolve user-supplied paths against a known root. |
+| `html.security.audit.missing-integrity*` | Fires on every `<script src>` (incl. inline favicon SVGs). |
+| `javascript.lang.security.audit.path-traversal.path-join-resolve-traversal*` | Common false positive in CLI tools that resolve user-supplied paths against a known root. |
 
-Real-world impact: 2,628-file production codebase scan went from **1,858 raw findings → 46 actionable** (98% demoted). The 46: 2 CRITICAL · 36 HIGH · 8 LOW.
+Demoted findings still count for `failOn`, the summary and the score.
+
+In one internal dogfood scan of a 2,628-file codebase, 46 of 1,858 findings stayed actionable. That run is not reproducible from this repository.
 
 ### `strict`
 
@@ -64,7 +66,7 @@ Set `failOn` in `.secgate.config.json`:
 ```json
 { "failOn": ["critical"] }                      // only fail on CRITICAL
 { "failOn": ["critical", "high", "medium"] }    // stricter
-{ "failOn": [] }                                // report only — never fail
+{ "failOn": [] }                                // never exit 1 (an incomplete scan still exits 2)
 ```
 
 ### Alternative — exit-code masking
@@ -93,7 +95,7 @@ secgate . --baseline
 # 4. Review + regenerate baseline quarterly
 ```
 
-Baseline file defaults to `.secgate-baseline.json` in the target directory (override via `baselineFile` in config). It is a JSON list of finding **signatures** (rule ID + file path + line). Commit it to the repo.
+Baseline file defaults to `.secgate-baseline.json` in the target directory (override via `baselineFile` in config; the path must stay inside the target). It is a JSON object `{ "generatedAt": "...", "findings": [{ "signature", "severity", "file", "line" }] }`. A finding matches when `signature`, `file` and `line` all match, so moving a flagged line makes it net-new. Commit it to the repo.
 
 ### Complementary — inline suppression
 
@@ -103,40 +105,39 @@ See next section.
 
 ## Suppression Syntax
 
-Inline suppression disables a rule for a specific line or block.
+Inline suppression disables one rule for one line. The comment must start with `#`, `//` or `/*`, followed by `secgate:ignore` and the rule ID (the finding `signature`; `*` works as a wildcard).
 
 ### Line comment
 
 ```javascript
-const token = "AKIA..."; // secgate:ignore gitleaks-aws-access-key
+const token = "AKIA..."; // secgate:ignore aws-access-token
 ```
 
 ```python
-password = "test"  # secgate:ignore gitleaks-generic-api-key
+password = "test"  # secgate:ignore generic-api-key
 ```
 
 ### Block comment
 
 ```javascript
-/* secgate:ignore semgrep-javascript-lang-eval-detected */
-const result = eval(input);
+/* secgate:ignore javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp */
+const re = new RegExp(pattern);
 ```
 
-### Multiple rules
+### One rule per comment
 
-```javascript
-// secgate:ignore gitleaks-github-pat, semgrep-javascript-crypto-weak-ssl
-```
+Only the first token after `secgate:ignore` is read, so a comma-separated list does not work. To suppress two rules on one line, put one comment on the line and one on the line above.
 
 ### Placement
 
-- **Same line** as the finding — most reliable.
-- **Line above** — accepted.
-- **Block comment preceding** — applies to the next statement.
+- **Same line** as the finding.
+- **Line directly above** the finding.
+- Nothing else: a comment two or more lines above does not apply.
+- Only findings with a file inside the target and a line number can be suppressed (not npm audit or osv-scanner findings).
 
 ### What it does
 
-SecGate filters suppressed findings out of the report before severity rollup. They do not count toward fail thresholds. They still appear in the HTML report under a "Suppressed" section so reviewers can audit them.
+SecGate drops suppressed findings before they reach the report. They do not count toward the summary, the score or `failOn`. The report keeps only counts: `suppressions.count` and `suppressions.byRule` in the JSON, and a collapsed "Suppressed" block with per-rule counts in the HTML.
 
 ### Rule IDs
 
@@ -160,13 +161,13 @@ Use the rule ID from the JSON report (`findings[].signature` field). Copy-paste 
 }
 ```
 
-Any scanner set to `false` is skipped and reported as `status: "skipped"`. To run only one scanner, disable the rest.
+Any scanner set to `false` is skipped and reported as `status: "skipped"` with reason `disabled in config`; that is not a coverage gap. To run only one scanner, disable the rest.
 
 ### Missing scanner binaries
 
 A scanner whose binary is not on `$PATH` is reported as `skipped` with reason `not installed`. Since `v0.3.0` that is a coverage gap: if the scanner applies to the project, a scan with no blocking findings ends `INCOMPLETE` with exit `2` instead of `PASS`. To skip a scanner on purpose, set it to `false` in `.secgate.config.json` as shown above; a disabled scanner is not a gap.
 
-CLI flags `--disable <list>` and `--only <scanner>` are planned — see [#32](https://github.com/Stelnyx/SecGate/issues/32).
+There are no `--disable` or `--only` CLI flags; scanner selection lives in the config file. `--require` does the opposite: it makes a scanner mandatory.
 
 ---
 
@@ -313,7 +314,6 @@ secgate infra/
 secgate . --allow-workspace
 
 # Scoping today is path-based, not scanner-per-path.
-# CLI equivalents (--disable, --only) planned: #32.
 ```
 
 ---
@@ -331,7 +331,7 @@ cat secgate-v7-report.json | jq '.findings[] | select(.severity=="CRITICAL")'
 cat secgate-v7-report.json | jq '.tools'
 ```
 
-If a scanner reports `"error"` state, re-run with `--debug` to see the raw stdout/stderr that failed to parse.
+If a scanner reports `"error"` state, read its reason in `toolSkipReason` and re-run with `--debug`, which prints the first 1,000 characters of each scanner's raw output and, when JSON parsing fails, the parse error with the first 200 bytes.
 
 ---
 

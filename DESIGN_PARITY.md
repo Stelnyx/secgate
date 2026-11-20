@@ -1,51 +1,67 @@
 # Design parity
 
-SecGate shares its visual identity with the other Stelnyx products. **Any change to the shared shell, theme, brand block, or theme toggle must keep the report consistent with the shared theme package.** Drift makes the product family feel inconsistent.
+SecGate shares its report look with the other Stelnyx products through the
+public npm package
+[`@stelnyx/report-theme`](https://www.npmjs.com/package/@stelnyx/report-theme)
+(`^0.1.4` in `package.json`). The theme package owns the CSS, the sidebar
+shell, the score hero, the KPI grid, the scanner list, the findings table and
+the favicons. SecGate does not keep its own copy of the shell or the CSS, so
+there is nothing to mirror by hand: change the theme package, then bump the
+dependency.
 
-The shared tokens ship in the public npm package [`@stelnyx/report-theme`](https://www.npmjs.com/package/@stelnyx/report-theme). That package is the reference for tokens, sidebar nav, brand block, theme button, export row, and score band thresholds. This file documents only SecGate-specific deviations and where to look.
+This file documents how SecGate uses the theme and where it deviates.
 
-## Shared design tokens (summary)
+## Theme tokens (from `@stelnyx/report-theme` 0.1.4)
 
-| Token | Dark (Midnight Blossom) | Light (Dawn Blossom) |
-|-------|-------------------------|----------------------|
-| `--color-pink` | `#ff2d78` | `#e8155f` |
-| `--color-green` | `#00d68f` | `#00976a` |
-| `--color-amber` | `#ffaa00` | `#b45309` |
-| `--color-red` | `#ff4d6a` | `#c5173a` |
-| `--color-muted` | `#8b7aa8` | `#7c5e9e` |
-| `--color-bg` | `#0a0a0f` | `#fef8ff` |
-| `--color-surface` | `#13131f` | `#f4ecff` |
-| `--color-border` | `#2a1f3d` | `#e2cefd` |
-| `--color-text` | `#f0e6ff` | `#1a0a2e` |
+The theme ships one dark palette. There is no light theme and no theme toggle.
 
-Score bands: `STRONG ≥85`, `GOOD ≥70`, `MIXED ≥50`, `WEAK <50`.
+| Token | Value |
+|-------|-------|
+| `--bg` | `#0a0a0a` |
+| `--surface` | `#141414` |
+| `--border` | `#1f1f1f` |
+| `--text` | `#e5e5e7` |
+| `--muted` | `#a3a3a8` |
+| `--success` | `#34c759` |
+| `--warn` | `#ff9500` |
+| `--error` | `#ff3b30` |
+| `--pink` | `#ff2d78` |
+
+Fonts: Inter (loaded from Google Fonts unless the shell is called with
+`skipInterFont: true`; SecGate does not pass it) and JetBrains Mono with system
+fallbacks.
 
 ## SecGate-specific facts
 
 | What | Value |
 |------|-------|
-| Shell builder | `lib/report.mjs` → `renderHtml(rep, repoName)` |
-| Shell CSS | inline in `renderHtml` (single `<style>` block) |
-| Class prefix | `sg-` (avoids collision with other products' prefixes) |
-| Theme toggle | `#sg-theme-toggle` (script inline at bottom of body) |
-| Theme storage key | `sg-theme` |
-| Favicon | 🛡 inline SVG |
-| Branding type | none — derived from `rep.securityScore`, `rep.target`, `rep.timestamp`, `rep.mode` |
-| Brand block extras | extra `PASS`/`FAIL` chip next to band pill (SecGate is a CI gate; the other products don't have a binary pass concept) |
+| Renderer | `lib/report.mjs` → `renderHtml(rep, repoName, profile)` |
+| Shell | `shell()` from `@stelnyx/report-theme`, called with `brand: "SECGATE"`, `product: "SecGate Report"` |
+| CSS | the theme's `css`, inlined in one `<style>` block; SecGate passes no `extraCss` |
+| JavaScript | none (SecGate passes no `bodyJs`) |
+| Favicon | `FAVICON_WHITE` (inline PNG data URI from the theme) |
+| Sidebar score | risk score (`intelligence.riskScore`) with a PASS / FAIL / INCOMPLETE badge |
+| Band | `Security · STRONG/GOOD/MIXED/WEAK` from `securityScore`: STRONG `>= 85`, GOOD `>= 70`, MIXED `>= 50`, WEAK below; `NO COVERAGE` when no scanner ran |
+| SecGate-only markup | `sg-` classes for the Informational and Suppressed `<details>` blocks; the theme has no CSS for them, so they render with browser defaults |
 
 ## Sections
 
-1. Summary — lede + 8-cell KPI row (Score, Risk, Confidence, Critical, High, Medium, Low, Unknown)
-2. Attack surface — chip list
-3. Baseline diff (only if `rep.baselineDiff` present)
-4. Findings — CSS-only tabs per tool (Semgrep, Gitleaks, npm, osv, Trivy)
-5. Reasoning — card grid
-6. Recommendations — list
-7. Remediation — list
-8. Tools — status table
+Sections appear in this order; the ones marked "if any" are omitted when empty.
+
+1. Overview: coverage warning, status hero, KPI grid (Critical, High, Medium,
+   Low, Unknown, Risk Score)
+2. Attack surface (if any)
+3. Baseline diff (with `--baseline`)
+4. Findings by tool: one row per scanner (Semgrep, Gitleaks, npm audit,
+   osv-scanner, Trivy) with count and status
+5. Top findings: the 10 most severe actionable findings, then the collapsed
+   Informational and Suppressed blocks
+6. Reasoning (if any)
+7. Recommendations (if any)
+8. Remediation plan (if any)
 
 ## Rules
 
-Touching shell, theme button, brand block, score pill, or tokens means **keeping SecGate aligned with the shared theme in the same change**. SecGate is a single `.mjs` file with no build step, so the cost of mirroring is one Edit; no excuse to defer.
-
-If you're tempted to ship one without the others "and circle back", don't. The drift compounds.
+- Change shared look (tokens, shell, brand block, score pill) in
+  `@stelnyx/report-theme`, not in `lib/report.mjs`.
+- Keep SecGate-only markup in `renderHtml` and prefix new classes with `sg-`.
