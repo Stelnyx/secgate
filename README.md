@@ -125,7 +125,7 @@ So "no telemetry" is exact for SecGate's own code; Semgrep's metrics (above) are
 
 ### Semgrep rules licensing
 
-SecGate does not include or redistribute any Semgrep rules. When Semgrep is installed, SecGate runs your own `semgrep` binary on your machine with `--config=auto`, so Semgrep fetches the rules from the Semgrep Registry and you use them for your own internal business purposes under the [Semgrep Rules License v1.0](https://semgrep.dev/legal/rules-license), or under each third-party rule's own license. Semgrep is a trademark of Semgrep, Inc. SecGate is not affiliated with or endorsed by Semgrep, Inc.
+SecGate does not include or redistribute any Semgrep rules. When Semgrep is installed, SecGate runs your own `semgrep` binary on your machine with `--config=auto`, so Semgrep fetches the rules from the Semgrep Registry and you use them for your own internal business purposes under the [Semgrep Rules License v1.0](https://semgrep.dev/legal/rules-license), or under each third-party rule's own license. Semgrep is a trademark of Semgrep, Inc. SecGate is not affiliated with or endorsed by Semgrep, Inc. Any future hosted service follows [ADR-0006](docs/adr/0006-no-hosted-semgrep-registry-rules.md): it will not run Semgrep-maintained registry rules on customer code.
 
 ---
 
