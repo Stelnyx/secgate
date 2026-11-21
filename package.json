@@ -1,6 +1,6 @@
 {
   "name": "@stelnyx/secgate",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Tiny security gate for CI/CD — orchestrates Semgrep, Gitleaks, osv-scanner, Trivy, and npm audit with a premium HTML report.",
   "type": "module",
   "bin": {
