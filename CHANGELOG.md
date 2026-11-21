@@ -6,6 +6,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + [Semantic Ver
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-11-20
+
 ### Fixed
 - **The HTML report makes no external requests.** The report linked Google
   Fonts (`fonts.googleapis.com`, `fonts.gstatic.com`), so opening it sent a
